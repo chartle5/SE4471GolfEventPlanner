@@ -1,0 +1,15 @@
+.app{display:flex;min-height:100vh;font-family:Inter,system-ui,Arial;margin:0;color:#0b1b2b}
+.sidebar{width:220px;background:#f8fafc;padding:18px;border-right:1px solid #e6eef8}
+.brand{font-weight:700;font-size:16px;margin-bottom:12px;color:#0b1b2b}
+.nav a{display:block;padding:8px;border-radius:6px;color:#475569;text-decoration:none;margin-bottom:6px}
+.nav a.active, .nav a:hover{background:#eef2ff;color:#3730a3}
+.content{flex:1;padding:20px}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.card{background:#ffffff;padding:14px;border-radius:10px;border:1px solid #eef2f7;color:#0b1b2b}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.muted{color:#64748b}
+.small{font-size:13px}
+input,select,textarea{width:100%;padding:8px;border-radius:8px;border:1px solid #e6eef8;background:#fff;color:inherit}
+.button{background:#3730a3;color:#fff;padding:8px 12px;border-radius:8px;border:none;cursor:pointer}
+.doc-list{display:grid;gap:8px}
+.tag{background:#eef2ff;padding:4px 8px;border-radius:6px;font-size:12px;color:#3730a3}
