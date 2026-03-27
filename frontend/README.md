@@ -1,29 +1,31 @@
 # Golf Tournament Planner — Frontend
 
-This is a frontend-only React app (Vite) for a demo Golf Tournament Planner. It uses mock data and no backend integrations.
+This is the React frontend for the Golf Tournament Planner application. It provides a user interface for tournament planning, knowledge base access, and workflow visualization. The frontend communicates with a FastAPI backend that includes AI-powered chat assistance.
 
-Setup
+## Features
+
+- Responsive React app with routes for Dashboard, Plan Tournament, Knowledge Base, Workflow, Event Memory, Artifacts, and Architecture
+- Mock data under `src/data` for documents, tournament state, workflow steps, and artifacts
+- Clean component structure under `src/components`
+- Integration with backend API for AI chat functionality
+
+## Setup
 
 1. Install dependencies:
-
-```bash
-cd frontend
-npm install
-```
+   ```bash
+   cd frontend
+   npm install
+   ```
 
 2. Run dev server:
+   ```bash
+   npm run dev
+   ```
 
-```bash
-npm run dev
-```
+The frontend will be available at `http://localhost:5173` and expects the backend to be running on `http://localhost:8000`.
 
-What it contains
-- Responsive React app with routes for Dashboard, Plan Tournament, Knowledge Base, Workflow, Event Memory, Artifacts, and Architecture.
-- Mock data under `src/data` for documents, tournament state, workflow steps, and artifacts.
-- Clean component structure under `src/components`.
- - Minimal React app with routes for Dashboard, Plan Tournament, and Knowledge Base.
- - Mock data under `src/data` for documents and tournament state.
- - Simplified components to keep the demo lightweight.
+## Notes
 
-Notes
-- No backend, API calls, or authentication are implemented. Everything is mock data and ready for future backend integration.
+- Requires the backend server to be running for full functionality
+- API calls are made to the backend for chat and tournament planning
+- All data is managed through the backend API
