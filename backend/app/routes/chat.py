@@ -17,6 +17,7 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
     return ChatResponse(
         message=result["message"],
         tournament=result["tournament"],
-        ready_for_generation=result["ready_for_generation"],
-        needs_regeneration=result["needs_regeneration"],
+        ready_for_generation=result.get("ready_for_generation", False),
+        needs_regeneration=result.get("needs_regeneration", False),
+        sources=result.get("sources", []),
     )

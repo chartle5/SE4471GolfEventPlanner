@@ -3,18 +3,10 @@ import os
 from datetime import date, datetime
 from typing import Any, Dict, List
 
-from dotenv import load_dotenv
-from openai import AsyncAzureOpenAI
+from app.services.openai_client import CHAT_DEPLOYMENT, client
+from app.services.rag import format_retrieved_context, retrieve_relevant_chunks
 
-load_dotenv()
-
-client = AsyncAzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-)
-
-DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+DEPLOYMENT = CHAT_DEPLOYMENT
 
 
 PLANNING_SYSTEM_PROMPT = """
@@ -225,6 +217,42 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 
+def _build_retrieval_query(user_message: str, tournament: Dict[str, Any]) -> str:
+    query_parts = [user_message.strip()]
+
+    if tournament.get("format"):
+        query_parts.append(f'Tournament format: {tournament["format"]}')
+
+    if tournament.get("constraints"):
+        query_parts.append(
+            "Constraints: " + ", ".join(str(item) for item in tournament["constraints"])
+        )
+
+    if tournament.get("accessibility"):
+        query_parts.append(f'Accessibility needs: {tournament["accessibility"]}')
+
+    return "\n".join(part for part in query_parts if part)
+
+
+def _preview_text(text: str, limit: int = 160) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "title": chunk.title,
+            "chunk_id": chunk.chunk_id,
+            "score": round(chunk.score, 3),
+            "preview": _preview_text(chunk.text),
+        }
+        for chunk in chunks
+    ]
+
+
 async def handle_chat(
     user_message: str,
     tournament: Dict[str, Any],
@@ -232,6 +260,14 @@ async def handle_chat(
     phase: str = "planning",
 ) -> Dict[str, Any]:
     tournament = _normalize_tournament(tournament)
+    retrieved_chunks = []
+
+    try:
+        retrieved_chunks = await retrieve_relevant_chunks(
+            _build_retrieval_query(user_message, tournament)
+        )
+    except Exception:
+        retrieved_chunks = []
 
     today_str = date.today().strftime("%B %d, %Y")
     system_prompt = (
@@ -253,7 +289,8 @@ async def handle_chat(
     user_prompt = (
         f"{history_block}"
         f"User: {user_message}\n\n"
-        f"[Current tournament state]\n{json.dumps(tournament, indent=2)}"
+        f"[Current tournament state]\n{json.dumps(tournament, indent=2)}\n\n"
+        f"[Retrieved knowledge snippets]\n{format_retrieved_context(retrieved_chunks)}"
     )
 
     messages = [
@@ -290,6 +327,7 @@ async def handle_chat(
             "tournament": updated_tournament,
             "ready_for_generation": ready_for_generation,
             "needs_regeneration": needs_regeneration,
+            "sources": _serialize_sources(retrieved_chunks),
         }
 
     except Exception as exc:
@@ -298,4 +336,5 @@ async def handle_chat(
             "tournament": tournament,
             "ready_for_generation": False,
             "needs_regeneration": False,
+            "sources": _serialize_sources(retrieved_chunks),
         }

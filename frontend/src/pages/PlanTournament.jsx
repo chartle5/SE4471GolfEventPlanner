@@ -200,7 +200,11 @@ export default function PlanTournament() {
 
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: data.message || 'No response' },
+        {
+          role: 'assistant',
+          content: data.message || 'No response',
+          sources: data.sources || [],
+        },
       ])
 
       if (data.tournament) {
@@ -281,6 +285,14 @@ export default function PlanTournament() {
                     {msg.role === 'user' ? 'You' : 'Assistant'}
                   </strong>
                   <div style={{ marginTop: 3 }}>{msg.content}</div>
+                  {msg.sources?.length > 0 && (
+                    <div
+                      className="small muted"
+                      style={{ marginTop: 8 }}
+                    >
+                      Sources: {msg.sources.map((source) => source.title).join(' • ')}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}

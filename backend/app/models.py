@@ -1,5 +1,5 @@
 from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
 
 
 # ─────────────────────────── existing chat / generate ────────────────────
@@ -17,11 +17,19 @@ class ChatRequest(BaseModel):
     phase: str = "planning"
 
 
+class ChatSource(BaseModel):
+    title: str
+    chunk_id: str
+    score: float
+    preview: str
+
+
 class ChatResponse(BaseModel):
     message: str
     tournament: Dict[str, Any]
     ready_for_generation: bool = False
     needs_regeneration: bool = False
+    sources: List[ChatSource] = Field(default_factory=list)
 
 
 class GenerateRequest(BaseModel):
