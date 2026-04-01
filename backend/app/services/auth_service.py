@@ -5,10 +5,8 @@ Auth helpers: password hashing and JWT creation/verification.
 import os
 from datetime import datetime, timedelta, timezone
 
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-
-_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 _SECRET: str = os.getenv("JWT_SECRET", "change_me")
 _ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
@@ -18,11 +16,11 @@ _EXPIRE_MINUTES: int = int(os.getenv("JWT_EXPIRE_MINUTES", "10080"))  # 7 days
 # ── passwords ─────────────────────────────────────────────────────────────
 
 def hash_password(plain: str) -> str:
-    return _pwd_context.hash(plain)
+    return bcrypt.hashpw(plain.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_context.verify(plain, hashed)
+    return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
 # ── tokens ────────────────────────────────────────────────────────────────

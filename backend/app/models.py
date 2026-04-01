@@ -109,6 +109,12 @@ class SendEmailDirectRequest(BaseModel):
     recipients: List[str]
     subject: str
     body: str
+    # Optional fields — when provided, the backend generates a styled HTML email
+    schedule: Optional[List[Dict[str, Any]]] = None
+    tournament_name: Optional[str] = None
+    tournament_date: Optional[str] = None
+    tournament_venue: Optional[str] = None
+    tournament_format: Optional[str] = None
 
     @field_validator("recipients")
     @classmethod
@@ -119,6 +125,24 @@ class SendEmailDirectRequest(BaseModel):
 
 
 class SendEmailDirectResponse(BaseModel):
+    success: bool
+    message: str
+
+
+class SendInviteRequest(BaseModel):
+    recipients: List[str]
+    tournament_meta: Dict[str, Any]
+    registration_link: Optional[str] = ""
+
+    @field_validator("recipients")
+    @classmethod
+    def _at_least_one(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("At least one recipient email is required")
+        return v
+
+
+class SendInviteResponse(BaseModel):
     success: bool
     message: str
 
