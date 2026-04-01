@@ -4,3 +4,9 @@ python-dotenv
 pydantic
 openai
 sentence-transformers
+motor
+pymongo[srv]
+sendgrid
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
