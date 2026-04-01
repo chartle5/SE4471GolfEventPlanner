@@ -4,7 +4,8 @@ import { NavLink } from 'react-router-dom'
 const links = [
   { to: '/', label: 'Dashboard' },
   { to: '/plan', label: 'Plan Tournament' },
-  { to: '/knowledge', label: 'Knowledge Base' }
+  { to: '/knowledge', label: 'Knowledge Base' },
+  { to: '/reservations', label: 'Reservations' },
 ]
 
 export default function Sidebar(){

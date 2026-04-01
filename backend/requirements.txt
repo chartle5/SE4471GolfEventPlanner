@@ -3,3 +3,9 @@ uvicorn
 python-dotenv
 pydantic
 openai
+motor
+pymongo[srv]
+sendgrid
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt
