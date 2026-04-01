@@ -5,6 +5,11 @@ from openai import AsyncAzureOpenAI
 
 load_dotenv()
 
+
+def _env_flag(name: str, default: str = "false") -> bool:
+    value = os.getenv(name, default)
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 client = AsyncAzureOpenAI(
     api_key=os.getenv("AZURE_OPENAI_API_KEY"),
     api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
@@ -12,7 +17,4 @@ client = AsyncAzureOpenAI(
 )
 
 CHAT_DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
-EMBEDDING_DEPLOYMENT = os.getenv(
-    "AZURE_OPENAI_EMBEDDING_DEPLOYMENT",
-    "text-embedding-3-small",
-)
+LOG_LLM_PROMPTS = _env_flag("LOG_LLM_PROMPTS")

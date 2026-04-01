@@ -15,7 +15,7 @@ A full-stack web application for planning and managing golf tournaments. The app
 
 - **Backend**: Python FastAPI with Azure OpenAI integration
 - **Frontend**: React with Vite, React Router
-- **AI**: Azure OpenAI GPT models plus a lightweight in-memory RAG layer
+- **AI**: Azure OpenAI GPT chat models plus a lightweight in-memory RAG layer with local embeddings
 
 ## Prerequisites
 
@@ -69,13 +69,16 @@ cd SE4471GolfEventPlanner
    AZURE_OPENAI_API_VERSION=2023-12-01-preview
    AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
-   AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small
+   RAG_LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+   LOG_LLM_PROMPTS=false
    ```
 
-   Replace the placeholder values with your actual Azure OpenAI resource details. For the
-   RAG proof of concept, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` should point to an Azure
-   deployment of an OpenAI embedding model such as `text-embedding-3-small`. If your
-   Azure deployment name is different, use that deployment name instead of the model name.
+   Replace the placeholder values with your actual Azure OpenAI resource details.
+   `RAG_LOCAL_EMBEDDING_MODEL` is optional and defaults to
+   `sentence-transformers/all-MiniLM-L6-v2`, which runs locally in Python for the
+   RAG proof of concept. Set `LOG_LLM_PROMPTS=true` when you want the backend console
+   to print the retrieval query, the retrieved chunks forwarded into the prompt, any
+   retrieval error, and the exact `messages` payload sent to the chat model.
 
 6. Start the backend server:
    ```bash
@@ -148,10 +151,13 @@ for a small local knowledge base:
 
 - Source documents live in `backend/app/data/knowledge_documents.py`
 - Documents are chunked locally in `backend/app/services/rag.py`
-- Chunk embeddings are generated once and cached in an in-memory array
+- Chunk embeddings are generated locally with `sentence-transformers` and cached in an in-memory array
 - Each chat request embeds the user query, ranks chunks with cosine similarity, and
   injects the top snippets into the planning prompt
 - No database is used; restarting the backend rebuilds the in-memory index on demand
+
+On first use, the local embedding model may need to be downloaded, so the machine
+running the backend needs internet access once for the model fetch unless it is already cached.
 
 This setup is intended for a small proof of concept with roughly ten short documents.
 If the corpus grows, the next step would be moving chunk storage and metadata into a

@@ -1,8 +1,12 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from app.services.openai_client import CHAT_DEPLOYMENT, client
-from app.services.rag import format_retrieved_context, retrieve_relevant_chunks
+from app.services.openai_client import CHAT_DEPLOYMENT, LOG_LLM_PROMPTS, client
+from app.services.rag import (
+    LOCAL_EMBEDDING_MODEL,
+    format_retrieved_context,
+    retrieve_relevant_chunks,
+)
 
 DEPLOYMENT = CHAT_DEPLOYMENT
 
@@ -113,15 +117,52 @@ def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _serialize_debug_chunks(chunks: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "title": chunk.title,
+            "document_id": chunk.document_id,
+            "chunk_id": chunk.chunk_id,
+            "score": round(chunk.score, 3),
+            "text": chunk.text,
+        }
+        for chunk in chunks
+    ]
+
+
+def _log_llm_request(
+    retrieval_query: str,
+    retrieved_chunks: List[Any],
+    messages: List[Dict[str, str]],
+    retrieval_error: Optional[str] = None,
+) -> None:
+    if not LOG_LLM_PROMPTS:
+        return
+
+    debug_payload = {
+        "deployment": DEPLOYMENT,
+        "embedding_model": LOCAL_EMBEDDING_MODEL,
+        "retrieval_query": retrieval_query,
+        "retrieval_error": retrieval_error,
+        "retrieved_chunks": _serialize_debug_chunks(retrieved_chunks),
+        "messages": messages,
+    }
+
+    print("=== LLM PROMPT DEBUG START ===")
+    print(json.dumps(debug_payload, indent=2, ensure_ascii=False))
+    print("=== LLM PROMPT DEBUG END ===")
+
+
 async def handle_chat(user_message: str, tournament: Dict[str, Any]) -> Dict[str, Any]:
     tournament = _normalize_tournament(tournament)
     retrieved_chunks = []
+    retrieval_query = _build_retrieval_query(user_message, tournament)
+    retrieval_error = None
 
     try:
-        retrieved_chunks = await retrieve_relevant_chunks(
-            _build_retrieval_query(user_message, tournament)
-        )
-    except Exception:
+        retrieved_chunks = await retrieve_relevant_chunks(retrieval_query)
+    except Exception as exc:
+        retrieval_error = str(exc)
         retrieved_chunks = []
 
     user_prompt = f"""
@@ -134,15 +175,18 @@ Current tournament object:
 Retrieved knowledge snippets:
 {format_retrieved_context(retrieved_chunks)}
 """
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    _log_llm_request(retrieval_query, retrieved_chunks, messages, retrieval_error)
 
     try:
         response = await client.chat.completions.create(
             model=DEPLOYMENT,
             temperature=0.2,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ],
+            messages=messages,
         )
 
         content = (response.choices[0].message.content or "").strip()
