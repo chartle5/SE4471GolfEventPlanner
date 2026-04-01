@@ -9,6 +9,7 @@ import ScheduleDraft from './pages/ScheduleDraft'
 import Reservations from './pages/Reservations'
 import Login from './pages/Login'
 import RegisterAccount from './pages/RegisterAccount'
+import PlayerRegister from './pages/PlayerRegister'
 import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout() {
@@ -44,6 +45,8 @@ export default function App() {
         path="/register"
         element={isLoggedIn ? <Navigate to="/" replace /> : <RegisterAccount />}
       />
+      {/* Public player registration — no account needed */}
+      <Route path="/player-register/:token" element={<PlayerRegister />} />
       {/* all other paths handled by the protected layout */}
       <Route path="/*" element={<ProtectedLayout />} />
     </Routes>

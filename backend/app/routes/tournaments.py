@@ -64,6 +64,7 @@ async def get_schedule(tournament_id: str, db: DB):
     registered = await crud.count_registrations(db, tournament_id)
     return {
         "schedule": doc["schedule"],
+        "registration_token": doc.get("registration_token", ""),
         "players_registered": registered,
         "total_players": doc["player_count"],
         "status": doc["status"],
@@ -123,6 +124,9 @@ async def send_brochure(
             body=doc["brochure_body"],
             registration_link=registration_link,
             tournament_name=doc["name"],
+            schedule=doc.get("schedule", []),
+            tournament_date=doc.get("date", ""),
+            tournament_venue=doc.get("venue", ""),
         )
     except Exception as exc:
         raise HTTPException(

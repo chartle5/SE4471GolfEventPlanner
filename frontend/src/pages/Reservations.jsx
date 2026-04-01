@@ -1,22 +1,58 @@
 import React, { useState, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Reservations() {
+  const { authHeaders } = useAuth()
   const [reservations, setReservations] = useState([])
   const [expandedId, setExpandedId] = useState(null)
-  const [modalRes, setModalRes] = useState(null)       // reservation whose modal is open
+  // liveData: { [tournament_id]: { schedule, registration_token, players_registered, total_players, status } }
+  const [liveData, setLiveData] = useState({})
+
+  // modal type: 'invite' | 'schedule' | null
+  const [modalType, setModalType]       = useState(null)
+  const [modalRes, setModalRes]         = useState(null)
   const [recipientInput, setRecipientInput] = useState('')
-  const [sending, setSending] = useState(false)
-  const [sendResult, setSendResult] = useState(null)  // { ok, message } | null
+  const [sending, setSending]           = useState(false)
+  const [sendResult, setSendResult]     = useState(null)  // { ok, message } | null
 
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
-      // Show most recently saved first
       setReservations([...stored].reverse())
     } catch {
       setReservations([])
     }
   }, [])
+
+  // Poll the backend every 15 s for live schedules on all saved tournaments
+  useEffect(() => {
+    const ids = reservations
+      .filter((r) => r.tournament_id)
+      .map((r) => r.tournament_id)
+    if (ids.length === 0) return
+
+    async function fetchLive() {
+      const results = await Promise.allSettled(
+        ids.map((id) =>
+          fetch(`http://localhost:8000/tournaments/${id}/schedule`)
+            .then((r) => (r.ok ? r.json() : null))
+            .catch(() => null)
+        )
+      )
+      setLiveData((prev) => {
+        const next = { ...prev }
+        ids.forEach((id, i) => {
+          const val = results[i].status === 'fulfilled' ? results[i].value : null
+          if (val) next[id] = val
+        })
+        return next
+      })
+    }
+
+    fetchLive()
+    const timer = setInterval(fetchLive, 15000)
+    return () => clearInterval(timer)
+  }, [reservations])
 
   function handleDelete(id) {
     if (!window.confirm('Remove this reservation?')) return
@@ -30,24 +66,30 @@ export default function Reservations() {
     }
   }
 
-  function openEmailModal(res) {
+  function openModal(res, type) {
     setModalRes(res)
+    setModalType(type)
     setRecipientInput('')
     setSendResult(null)
   }
 
-  function closeEmailModal() {
+  function closeModal() {
     if (sending) return
     setModalRes(null)
+    setModalType(null)
     setSendResult(null)
   }
 
-  async function handleSendEmail() {
-    if (!modalRes) return
-    const emails = recipientInput
+  function parseEmails(input) {
+    return input
       .split(/[\s,;]+/)
       .map((e) => e.trim())
       .filter((e) => e.length > 0)
+  }
+
+  async function handleSendInvite() {
+    if (!modalRes) return
+    const emails = parseEmails(recipientInput)
     if (emails.length === 0) {
       setSendResult({ ok: false, message: 'Please enter at least one email address.' })
       return
@@ -55,18 +97,94 @@ export default function Reservations() {
     setSending(true)
     setSendResult(null)
     try {
+      // Prefer token already stored locally or fetched live
+      let token =
+        modalRes.registration_token ||
+        liveData[modalRes.tournament_id]?.registration_token ||
+        ''
+
+      // No token yet — save to MongoDB now so the invite can include the
+      // "Register Now" button with a real registration link.
+      if (!token) {
+        try {
+          const saveRes = await fetch('http://localhost:8000/tournaments', {
+            method: 'POST',
+            headers: authHeaders(),
+            body: JSON.stringify({
+              tournament: modalRes.tournament,
+              schedule: modalRes.schedule,
+              brochure: modalRes.brochure,
+            }),
+          })
+          if (saveRes.ok) {
+            const saveData = await saveRes.json()
+            token = saveData.registration_token
+            // Persist back to localStorage so future invites work instantly
+            const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
+            const updated = stored.map((r) =>
+              r.id === modalRes.id
+                ? { ...r, tournament_id: saveData.tournament_id, registration_token: token }
+                : r
+            )
+            localStorage.setItem('savedReservations', JSON.stringify(updated))
+            setReservations([...updated].reverse())
+          }
+        } catch {
+          // Fall through — invite sent without link rather than failing entirely
+        }
+      }
+
+      const registrationLink = token
+        ? `${window.location.origin}/player-register/${token}`
+        : ''
+      const res = await fetch('http://localhost:8000/email/send-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          recipients: emails,
+          tournament_meta: modalRes.brochure?.meta || modalRes.tournament || {},
+          registration_link: registrationLink,
+        }),
+      })
+      const data = await res.json()
+      setSendResult({ ok: data.success, message: data.message })
+      if (data.success) setTimeout(closeModal, 2000)
+    } catch {
+      setSendResult({ ok: false, message: 'Could not reach the server. Is the backend running?' })
+    } finally {
+      setSending(false)
+    }
+  }
+
+  async function handleSendSchedule() {
+    if (!modalRes) return
+    const emails = parseEmails(recipientInput)
+    if (emails.length === 0) {
+      setSendResult({ ok: false, message: 'Please enter at least one email address.' })
+      return
+    }
+    setSending(true)
+    setSendResult(null)
+    try {
+      const t = modalRes.tournament || {}
+      const meta = modalRes.brochure?.meta || {}
       const res = await fetch('http://localhost:8000/email/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipients: emails,
-          subject: modalRes.brochure?.subject || 'Tournament Brochure',
+          subject: modalRes.brochure?.subject || 'Tournament Schedule',
           body: modalRes.brochure?.body || '',
+          schedule: modalRes.schedule || [],
+          tournament_name: t.name || meta.name || '',
+          tournament_date: t.date || meta.date || '',
+          tournament_venue: t.venue || meta.venue || '',
+          tournament_format: t.format || meta.format || '',
         }),
       })
       const data = await res.json()
       setSendResult({ ok: data.success, message: data.message })
-      if (data.success) setTimeout(closeEmailModal, 2000)
+      if (data.success) setTimeout(closeModal, 2000)
     } catch {
       setSendResult({ ok: false, message: 'Could not reach the server. Is the backend running?' })
     } finally {
@@ -149,10 +267,16 @@ export default function Reservations() {
                   {isExpanded ? 'Hide Brochure' : 'View Brochure'}
                 </button>
                 <button
-                  onClick={() => openEmailModal(res)}
+                  onClick={() => openModal(res, 'invite')}
                   style={{ ...outlineBtnStyle, borderColor: '#2563eb', color: '#2563eb' }}
                 >
-                  Send Email Brochure
+                  Send Invite
+                </button>
+                <button
+                  onClick={() => openModal(res, 'schedule')}
+                  style={{ ...outlineBtnStyle, borderColor: '#166534', color: '#166534' }}
+                >
+                  Send Schedule
                 </button>
                 <button
                   onClick={() => handleDelete(res.id)}
@@ -162,32 +286,47 @@ export default function Reservations() {
                 </button>
               </div>
 
-
-
-              {/* Tee schedule summary */}
-              {res.schedule && res.schedule.length > 0 && (
-                <div style={{ padding: '12px 20px' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14 }}>Tee Schedule</div>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: '#f3f4f6' }}>
-                        <th style={thStyle}>Group</th>
-                        <th style={thStyle}>Tee Time</th>
-                        <th style={thStyle}>Players</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {res.schedule.map((row) => (
-                        <tr key={row.group} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={tdStyle}>Group {row.group}</td>
-                          <td style={{ ...tdStyle, fontWeight: 600, color: '#166534' }}>{row.teeTime}</td>
-                          <td style={tdStyle}>{row.players.join(', ')}</td>
+              {/* Tee schedule summary — uses live data from DB when available */}
+              {(() => {
+                const live = liveData[res.tournament_id]
+                const displaySchedule = live?.schedule || res.schedule
+                if (!displaySchedule || displaySchedule.length === 0) return null
+                return (
+                  <div style={{ padding: '12px 20px' }}>
+                    <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 14, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      Tee Schedule
+                      {live && (
+                        <span style={{ fontSize: 11, background: '#d1fae5', color: '#166534', borderRadius: 4, padding: '1px 7px', fontWeight: 500 }}>
+                          Live
+                        </span>
+                      )}
+                      {live && live.players_registered != null && (
+                        <span style={{ fontSize: 11, color: '#6b7280', fontWeight: 400 }}>
+                          {live.players_registered}/{live.total_players} registered
+                        </span>
+                      )}
+                    </div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                      <thead>
+                        <tr style={{ background: '#f3f4f6' }}>
+                          <th style={thStyle}>Group</th>
+                          <th style={thStyle}>Tee Time</th>
+                          <th style={thStyle}>Players</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {displaySchedule.map((row) => (
+                          <tr key={row.group} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                            <td style={tdStyle}>Group {row.group}</td>
+                            <td style={{ ...tdStyle, fontWeight: 600, color: '#166534' }}>{row.teeTime}</td>
+                            <td style={tdStyle}>{row.players.join(', ')}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )
+              })()}
 
               {/* Brochure preview (expandable) */}
               {isExpanded && res.brochure && (
@@ -222,10 +361,10 @@ export default function Reservations() {
         })}
       </div>
 
-      {/* ── Email Brochure Modal ── */}
-      {modalRes && (
+      {/* ── Email Modal (shared for Invite + Schedule) ── */}
+      {modalRes && modalType && (
         <div
-          onClick={closeEmailModal}
+          onClick={closeModal}
           style={{
             position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.45)',
@@ -246,7 +385,7 @@ export default function Reservations() {
           >
             {/* Modal header */}
             <div style={{
-              background: '#166534',
+              background: modalType === 'invite' ? '#1d4ed8' : '#166534',
               color: '#fff',
               padding: '16px 20px',
               display: 'flex',
@@ -254,24 +393,42 @@ export default function Reservations() {
               alignItems: 'center',
             }}>
               <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Email Brochure</div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>
+                  {modalType === 'invite' ? 'Send Invite' : 'Send Schedule'}
+                </div>
                 <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
                   {modalRes.tournament?.name || 'Tournament'}
                 </div>
               </div>
               <button
-                onClick={closeEmailModal}
+                onClick={closeModal}
                 style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}
                 disabled={sending}
               >✕</button>
             </div>
 
+            {/* Modal description */}
+            <div style={{
+              background: modalType === 'invite' ? '#eff6ff' : '#f0fdf4',
+              borderBottom: '1px solid #e5e7eb',
+              padding: '10px 20px',
+              fontSize: 12,
+              color: '#374151',
+            }}>
+              {modalType === 'invite'
+                ? (() => {
+                    const hasToken =
+                      modalRes.registration_token ||
+                      liveData[modalRes.tournament_id]?.registration_token
+                    return `Sends tournament details + a "Register Now" button so players can claim a tee-time slot.${
+                      !hasToken ? ' ⚠️ No registration link found — make sure you are logged in and re-save the schedule.' : ''
+                    }`
+                  })()
+                : 'Sends the full tee-time brochure with all player assignments.'}
+            </div>
+
             {/* Modal body */}
             <div style={{ padding: '20px 24px' }}>
-              <div style={{ marginBottom: 6, fontSize: 12, color: '#6b7280' }}>
-                <strong>Subject:</strong> {modalRes.brochure?.subject || '—'}
-              </div>
-
               <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>
                 Recipient Emails
               </label>
@@ -322,14 +479,16 @@ export default function Reservations() {
               justifyContent: 'flex-end',
               gap: 10,
             }}>
-              <button onClick={closeEmailModal} disabled={sending} style={outlineBtnStyle}>
+              <button onClick={closeModal} disabled={sending} style={outlineBtnStyle}>
                 Cancel
               </button>
               <button
-                onClick={handleSendEmail}
+                onClick={modalType === 'invite' ? handleSendInvite : handleSendSchedule}
                 disabled={sending}
                 style={{
-                  background: sending ? '#86efac' : '#166534',
+                  background: sending
+                    ? '#86efac'
+                    : modalType === 'invite' ? '#2563eb' : '#166534',
                   color: '#fff',
                   border: 'none',
                   padding: '7px 20px',
@@ -340,7 +499,7 @@ export default function Reservations() {
                   transition: 'background 0.15s',
                 }}
               >
-                {sending ? 'Sending…' : 'Send Email'}
+                {sending ? 'Sending…' : modalType === 'invite' ? 'Send Invite' : 'Send Schedule'}
               </button>
             </div>
           </div>
@@ -375,3 +534,4 @@ const tdStyle = {
   color: '#111827',
   fontSize: 13,
 }
+

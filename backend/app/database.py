@@ -1,5 +1,7 @@
 import os
+import ssl
 
+import certifi
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from dotenv import load_dotenv
 
@@ -13,7 +15,8 @@ _client: AsyncIOMotorClient | None = None
 
 async def connect_to_mongo() -> None:
     global _client
-    _client = AsyncIOMotorClient(MONGODB_URL)
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
+    _client = AsyncIOMotorClient(MONGODB_URL, tls=True, tlsCAFile=certifi.where())
     db = _client[DB_NAME]
 
     # Create indexes for fast lookups

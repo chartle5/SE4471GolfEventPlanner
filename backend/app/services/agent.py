@@ -46,7 +46,7 @@ Your job:
   - Set "readyForGeneration": true
   - Set "needsRegeneration": false
   - In "message", say only:
-      "Great — I have all the information I need. Would you like me to start generating your tournament documents?"
+      "Great — I have all the information I need. Click the green button on the right to start generating your documents."
   - Do NOT repeat the tournament details in the message — the UI already displays them.
 - If not all required fields are filled, set "readyForGeneration": false
 
