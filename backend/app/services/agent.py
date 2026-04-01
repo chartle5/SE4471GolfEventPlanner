@@ -1,19 +1,10 @@
 import json
-import os
-from typing import Any, Dict
+from typing import Any, Dict, List
 
-from dotenv import load_dotenv
-from openai import AsyncAzureOpenAI
+from app.services.openai_client import CHAT_DEPLOYMENT, client
+from app.services.rag import format_retrieved_context, retrieve_relevant_chunks
 
-load_dotenv()
-
-client = AsyncAzureOpenAI(
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-)
-
-DEPLOYMENT = os.getenv("AZURE_OPENAI_DEPLOYMENT")
+DEPLOYMENT = CHAT_DEPLOYMENT
 
 
 SYSTEM_PROMPT = """
@@ -22,17 +13,21 @@ You are an AI golf tournament planning assistant.
 You will be given:
 1. The user's latest message
 2. The current tournament object
+3. Retrieved knowledge snippets from the local planning library
 
 Your job:
 - Update the tournament object using any new information from the user
 - Preserve existing information unless the user changes it
 - Ask for missing important details when needed 
+- Use retrieved knowledge when it helps answer the user's question or suggest next steps
 - Return ONLY valid JSON
 - The JSON must contain exactly these two top-level fields:
   "message": a helpful natural-language response to the user
   "tournament": the full updated tournament object
 
 Rules:
+- Treat retrieved knowledge as guidance, not as user-provided facts about this tournament
+- If retrieved knowledge conflicts with the user's direct instructions, prefer the user's instructions
 - Do not wrap the JSON in markdown
 - Do not return extra text
 - Keep the same general object structure
@@ -82,8 +77,52 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 
+def _build_retrieval_query(user_message: str, tournament: Dict[str, Any]) -> str:
+    query_parts = [user_message.strip()]
+
+    if tournament.get("format"):
+        query_parts.append(f'Tournament format: {tournament["format"]}')
+
+    if tournament.get("constraints"):
+        query_parts.append(
+            "Constraints: " + ", ".join(str(item) for item in tournament["constraints"])
+        )
+
+    if tournament.get("accessibility"):
+        query_parts.append(f'Accessibility needs: {tournament["accessibility"]}')
+
+    return "\n".join(part for part in query_parts if part)
+
+
+def _preview_text(text: str, limit: int = 160) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= limit:
+        return compact
+    return compact[: limit - 3].rstrip() + "..."
+
+
+def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "title": chunk.title,
+            "chunk_id": chunk.chunk_id,
+            "score": round(chunk.score, 3),
+            "preview": _preview_text(chunk.text),
+        }
+        for chunk in chunks
+    ]
+
+
 async def handle_chat(user_message: str, tournament: Dict[str, Any]) -> Dict[str, Any]:
     tournament = _normalize_tournament(tournament)
+    retrieved_chunks = []
+
+    try:
+        retrieved_chunks = await retrieve_relevant_chunks(
+            _build_retrieval_query(user_message, tournament)
+        )
+    except Exception:
+        retrieved_chunks = []
 
     user_prompt = f"""
 User message:
@@ -91,6 +130,9 @@ User message:
 
 Current tournament object:
 {json.dumps(tournament, indent=2)}
+
+Retrieved knowledge snippets:
+{format_retrieved_context(retrieved_chunks)}
 """
 
     try:
@@ -112,10 +154,12 @@ Current tournament object:
         return {
             "message": message,
             "tournament": updated_tournament,
+            "sources": _serialize_sources(retrieved_chunks),
         }
 
     except Exception as exc:
         return {
             "message": f"I ran into an error while updating the tournament: {str(exc)}",
             "tournament": tournament,
+            "sources": _serialize_sources(retrieved_chunks),
         }

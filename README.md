@@ -5,6 +5,7 @@ A full-stack web application for planning and managing golf tournaments. The app
 ## Features
 
 - **AI-Powered Planning**: Chat-based tournament planning using Azure OpenAI
+- **RAG Proof of Concept**: Local document chunking with in-memory embeddings for lightweight retrieval
 - **Tournament Management**: Create and manage golf tournament details
 - **Knowledge Base**: Access tournament planning resources and best practices
 - **Workflow Visualization**: View planning workflows and artifacts
@@ -14,7 +15,7 @@ A full-stack web application for planning and managing golf tournaments. The app
 
 - **Backend**: Python FastAPI with Azure OpenAI integration
 - **Frontend**: React with Vite, React Router
-- **AI**: Azure OpenAI GPT models for intelligent planning assistance
+- **AI**: Azure OpenAI GPT models plus a lightweight in-memory RAG layer
 
 ## Prerequisites
 
@@ -68,9 +69,13 @@ cd SE4471GolfEventPlanner
    AZURE_OPENAI_API_VERSION=2023-12-01-preview
    AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+   AZURE_OPENAI_EMBEDDING_DEPLOYMENT=text-embedding-3-small
    ```
 
-   Replace the placeholder values with your actual Azure OpenAI resource details.
+   Replace the placeholder values with your actual Azure OpenAI resource details. For the
+   RAG proof of concept, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` should point to an Azure
+   deployment of an OpenAI embedding model such as `text-embedding-3-small`. If your
+   Azure deployment name is different, use that deployment name instead of the model name.
 
 6. Start the backend server:
    ```bash
@@ -109,12 +114,16 @@ SE4471GolfEventPlanner/
 ├── backend/
 │   ├── app/
 │   │   ├── __init__.py
+│   │   ├── data/
+│   │   │   └── knowledge_documents.py  # Local RAG source documents
 │   │   ├── main.py          # FastAPI application
 │   │   ├── models.py        # Pydantic models
 │   │   ├── routes/
 │   │   │   └── chat.py      # Chat API endpoints
 │   │   └── services/
-│   │       └── agent.py     # Azure OpenAI integration
+│   │       ├── agent.py     # Chat orchestration and prompt handling
+│   │       ├── openai_client.py  # Shared Azure OpenAI client configuration
+│   │       └── rag.py       # Local chunking and in-memory retrieval
 │   └── requirements.txt     # Python dependencies
 ├── frontend/
 │   ├── src/
@@ -131,6 +140,22 @@ SE4471GolfEventPlanner/
 
 - `GET /` - Health check
 - `POST /chat` - AI-powered tournament planning chat
+
+## RAG Proof of Concept
+
+The chatbot now includes a lightweight retrieval-augmented generation pipeline designed
+for a small local knowledge base:
+
+- Source documents live in `backend/app/data/knowledge_documents.py`
+- Documents are chunked locally in `backend/app/services/rag.py`
+- Chunk embeddings are generated once and cached in an in-memory array
+- Each chat request embeds the user query, ranks chunks with cosine similarity, and
+  injects the top snippets into the planning prompt
+- No database is used; restarting the backend rebuilds the in-memory index on demand
+
+This setup is intended for a small proof of concept with roughly ten short documents.
+If the corpus grows, the next step would be moving chunk storage and metadata into a
+vector database or a persistent file-backed index.
 
 ## Troubleshooting
 

@@ -43,6 +43,7 @@ export default function PlanTournament() {
         {
           role: 'assistant',
           content: data.message || 'No response',
+          sources: data.sources || [],
         },
       ])
 
@@ -118,6 +119,14 @@ export default function PlanTournament() {
                   {msg.role === 'user' ? 'You' : 'Assistant'}
                 </strong>
                 <div>{msg.content}</div>
+                {msg.sources?.length > 0 && (
+                  <div
+                    className="small muted"
+                    style={{ marginTop: 8 }}
+                  >
+                    Sources: {msg.sources.map((source) => source.title).join(' • ')}
+                  </div>
+                )}
               </div>
             </div>
           ))}
