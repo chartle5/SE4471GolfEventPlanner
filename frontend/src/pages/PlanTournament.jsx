@@ -158,11 +158,12 @@ export default function PlanTournament() {
           },
         ])
       } else {
+        window.open('/schedule-draft', '_blank')
         setMessages((prev) => [
           ...prev,
           {
             role: 'assistant',
-            content: 'Documents regenerated. Refresh the schedule tab to see the updated changes.',
+            content: 'Documents regenerated. Your updated schedule has opened in a new tab.',
           },
         ])
       }
@@ -217,11 +218,12 @@ export default function PlanTournament() {
 
       if (phase === 'refinement' && data.needs_regeneration && data.tournament) {
         await callGenerate(data.tournament)
+        window.open('/schedule-draft', '_blank')
         setMessages((prev) => [
           ...prev,
           {
             role: 'assistant',
-            content: 'Documents updated. Refresh the schedule tab or reopen it to see the changes.',
+            content: 'Documents updated. Your updated schedule has opened in a new tab.',
           },
         ])
       }

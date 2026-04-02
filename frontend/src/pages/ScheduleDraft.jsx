@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react'
+import { useAuth } from '../context/AuthContext'
 
 export default function ScheduleDraft() {
   const [schedule, setSchedule] = useState(null)
   const [brochure, setBrochure] = useState(null)
   const [tournament, setTournament] = useState(null)
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const { authHeaders } = useAuth()
 
   const loadFromStorage = useCallback(() => {
     try {
@@ -30,8 +33,9 @@ export default function ScheduleDraft() {
     return () => window.removeEventListener('focus', onFocus)
   }, [loadFromStorage])
 
-  function handleSave() {
+  async function handleSave() {
     if (!tournament || !schedule || !brochure) return
+    setSaving(true)
     try {
       const existing = JSON.parse(localStorage.getItem('savedReservations') || '[]')
       const entry = {
@@ -40,12 +44,33 @@ export default function ScheduleDraft() {
         tournament,
         schedule,
         brochure,
+        tournament_id: null,
+        registration_token: null,
       }
+
+      // Attempt to persist to MongoDB so we get a registration token
+      try {
+        const res = await fetch('http://localhost:8000/tournaments', {
+          method: 'POST',
+          headers: authHeaders(),
+          body: JSON.stringify({ tournament, schedule, brochure }),
+        })
+        if (res.ok) {
+          const data = await res.json()
+          entry.tournament_id = data.tournament_id
+          entry.registration_token = data.registration_token
+        }
+      } catch {
+        // DB save failed — still save locally without the registration link
+      }
+
       existing.push(entry)
       localStorage.setItem('savedReservations', JSON.stringify(existing))
       setSaved(true)
     } catch {
       alert('Failed to save — storage error.')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -141,18 +166,19 @@ export default function ScheduleDraft() {
         ) : (
           <button
             onClick={handleSave}
+            disabled={saving}
             style={{
-              background: '#2563eb',
+              background: saving ? '#93c5fd' : '#2563eb',
               color: '#fff',
               border: 'none',
               padding: '10px 28px',
               borderRadius: 8,
               fontWeight: 700,
               fontSize: 15,
-              cursor: 'pointer',
+              cursor: saving ? 'default' : 'pointer',
             }}
           >
-            Save Schedule
+            {saving ? 'Saving…' : 'Save Schedule'}
           </button>
         )}
       </div>
