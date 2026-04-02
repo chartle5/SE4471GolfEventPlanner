@@ -4,8 +4,10 @@ python-dotenv
 certifi
 pydantic
 openai
+sentence-transformers
 motor
 pymongo[srv]
 sendgrid
 python-jose[cryptography]
+passlib[bcrypt]
 bcrypt

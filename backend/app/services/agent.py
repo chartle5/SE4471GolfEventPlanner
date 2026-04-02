@@ -1,10 +1,13 @@
 import json
-import os
 from datetime import date, datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from app.services.openai_client import CHAT_DEPLOYMENT, client
-from app.services.rag import format_retrieved_context, retrieve_relevant_chunks
+from app.services.openai_client import CHAT_DEPLOYMENT, LOG_LLM_PROMPTS, client
+from app.services.rag import (
+    LOCAL_EMBEDDING_MODEL,
+    format_retrieved_context,
+    retrieve_relevant_chunks,
+)
 
 DEPLOYMENT = CHAT_DEPLOYMENT
 
@@ -12,7 +15,10 @@ DEPLOYMENT = CHAT_DEPLOYMENT
 PLANNING_SYSTEM_PROMPT = """
 You are an AI golf tournament planning assistant.
 
-You will be given the full conversation history plus the current tournament object.
+You will be given:
+1. The full conversation history
+2. The current tournament object
+3. Retrieved knowledge snippets from the local planning library
 
 REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   1.  name                 — tournament name
@@ -41,6 +47,9 @@ Field rules:
 Your job:
 - Extract any information from the user's message and update the tournament object
 - Preserve ALL existing fields unless the user explicitly changes them
+- Use retrieved knowledge when it helps answer the user's question or suggest next steps
+- Treat retrieved knowledge as guidance, not as user-provided facts about this tournament
+- If retrieved knowledge conflicts with the user's direct instructions, prefer the user's instructions
 - Ask for ONE missing required field at a time — keep questions short and natural
 - Once ALL required fields are filled (including teamSize if event is "team"):
   - Set "readyForGeneration": true
@@ -67,6 +76,9 @@ You are an AI golf tournament planning assistant in REFINEMENT MODE.
 
 Tournament documents have already been generated. The user may now request changes
 to any aspect of the tournament.
+
+You will also receive retrieved knowledge snippets from the local planning library.
+Use them as guidance when helpful, but do not treat them as user-provided facts.
 
 Field rules (same as planning):
 - teamSize for an individual event must be 1; if the user changes eventType to
@@ -118,11 +130,11 @@ EXAMPLE_EMPTY_TOURNAMENT = {
     "budget": 0,
     "staffing": {
         "volunteers": 0,
-        "staff": 0
+        "staff": 0,
     },
     "accessibility": "",
     "notes": "",
-    "constraints": []
+    "constraints": [],
 }
 
 
@@ -132,7 +144,6 @@ def _resolve_year(month: int, day: int) -> int:
     try:
         candidate = date(today.year, month, day)
     except ValueError:
-        # Invalid day for month (e.g. Feb 30) — just use current year
         return today.year
     return today.year if candidate >= today else today.year + 1
 
@@ -140,41 +151,43 @@ def _resolve_year(month: int, day: int) -> int:
 def _normalize_date(date_str: str) -> str:
     """
     Parse a date string and apply smart year resolution:
-    - No year given → pick current year if date is upcoming, else next year.
-    - Year given but already past → apply same logic.
-    - Year given and current/future → leave unchanged.
+    - No year given -> pick current year if date is upcoming, else next year.
+    - Year given but already past -> apply same logic.
+    - Year given and current/future -> leave unchanged.
     """
     if not date_str or not date_str.strip():
         return date_str
 
-    s = date_str.strip()
+    value = date_str.strip()
     today = date.today()
 
-    # Formats without a year — apply smart resolution
     for fmt in ("%B %d", "%b %d", "%m/%d", "%m-%d"):
         try:
-            parsed = datetime.strptime(s, fmt)
+            parsed = datetime.strptime(value, fmt)
             year = _resolve_year(parsed.month, parsed.day)
             return date(year, parsed.month, parsed.day).strftime("%B %d, %Y")
         except ValueError:
             pass
 
-    # Formats with a year
-    for fmt in ("%B %d, %Y", "%b %d, %Y", "%Y-%m-%d", "%m/%d/%Y", "%m/%d/%y",
-                "%B %d %Y", "%b %d %Y"):
+    for fmt in (
+        "%B %d, %Y",
+        "%b %d, %Y",
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%m/%d/%y",
+        "%B %d %Y",
+        "%b %d %Y",
+    ):
         try:
-            parsed = datetime.strptime(s, fmt)
+            parsed = datetime.strptime(value, fmt)
             if parsed.year < today.year:
-                # Stale year (e.g. 2024) — re-apply smart resolution
                 year = _resolve_year(parsed.month, parsed.day)
                 return date(year, parsed.month, parsed.day).strftime("%B %d, %Y")
-            # Current or future year — respect as-is
-            return s
+            return value
         except ValueError:
             pass
 
-    # Unparseable — return unchanged
-    return s
+    return value
 
 
 def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
@@ -210,7 +223,6 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(merged.get("description"), str):
         merged["description"] = ""
 
-    # Smart year resolution for date fields
     merged["date"] = _normalize_date(merged.get("date", ""))
     merged["registrationDeadline"] = _normalize_date(merged.get("registrationDeadline", ""))
 
@@ -222,12 +234,12 @@ def _build_retrieval_query(user_message: str, tournament: Dict[str, Any]) -> str
 
     if tournament.get("format"):
         query_parts.append(f'Tournament format: {tournament["format"]}')
-
+    if tournament.get("eventType"):
+        query_parts.append(f'Event type: {tournament["eventType"]}')
     if tournament.get("constraints"):
         query_parts.append(
             "Constraints: " + ", ".join(str(item) for item in tournament["constraints"])
         )
-
     if tournament.get("accessibility"):
         query_parts.append(f'Accessibility needs: {tournament["accessibility"]}')
 
@@ -253,31 +265,65 @@ def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
     ]
 
 
+def _serialize_debug_chunks(chunks: List[Any]) -> List[Dict[str, Any]]:
+    return [
+        {
+            "title": chunk.title,
+            "document_id": chunk.document_id,
+            "chunk_id": chunk.chunk_id,
+            "score": round(chunk.score, 3),
+            "text": chunk.text,
+        }
+        for chunk in chunks
+    ]
+
+
+def _log_llm_request(
+    retrieval_query: str,
+    retrieved_chunks: List[Any],
+    messages: List[Dict[str, str]],
+    retrieval_error: Optional[str] = None,
+) -> None:
+    if not LOG_LLM_PROMPTS:
+        return
+
+    debug_payload = {
+        "deployment": DEPLOYMENT,
+        "embedding_model": LOCAL_EMBEDDING_MODEL,
+        "retrieval_query": retrieval_query,
+        "retrieval_error": retrieval_error,
+        "retrieved_chunks": _serialize_debug_chunks(retrieved_chunks),
+        "messages": messages,
+    }
+
+    print("=== LLM PROMPT DEBUG START ===")
+    print(json.dumps(debug_payload, indent=2, ensure_ascii=False))
+    print("=== LLM PROMPT DEBUG END ===")
+
+
 async def handle_chat(
     user_message: str,
     tournament: Dict[str, Any],
-    history: List[Dict[str, str]] = None,
+    history: Optional[List[Dict[str, str]]] = None,
     phase: str = "planning",
 ) -> Dict[str, Any]:
     tournament = _normalize_tournament(tournament)
     retrieved_chunks = []
+    retrieval_query = _build_retrieval_query(user_message, tournament)
+    retrieval_error = None
 
     try:
-        retrieved_chunks = await retrieve_relevant_chunks(
-            _build_retrieval_query(user_message, tournament)
-        )
-    except Exception:
+        retrieved_chunks = await retrieve_relevant_chunks(retrieval_query)
+    except Exception as exc:
+        retrieval_error = str(exc)
         retrieved_chunks = []
 
     today_str = date.today().strftime("%B %d, %Y")
     system_prompt = (
-        f"Today's date is {today_str}. Use this to resolve partial dates (e.g. 'June 26') "
-        f"to the nearest upcoming occurrence.\n\n"
+        f"Today's date is {today_str}. Use this to resolve partial dates "
+        f"(e.g. 'June 26') to the nearest upcoming occurrence.\n\n"
     ) + (PLANNING_SYSTEM_PROMPT if phase == "planning" else REFINEMENT_SYSTEM_PROMPT)
 
-    # Embed conversation history as a text block in the user prompt rather than injecting
-    # it as raw chat turns. This prevents the model from getting confused about its output
-    # format when it sees previous plain-text assistant replies in the chat history.
     history_block = ""
     if history:
         lines = []
@@ -298,6 +344,8 @@ async def handle_chat(
         {"role": "user", "content": user_prompt},
     ]
 
+    _log_llm_request(retrieval_query, retrieved_chunks, messages, retrieval_error)
+
     try:
         response = await client.chat.completions.create(
             model=DEPLOYMENT,
@@ -307,11 +355,8 @@ async def handle_chat(
 
         content = (response.choices[0].message.content or "").strip()
 
-        # Strip markdown code fences if the model wraps its response despite instructions
         if content.startswith("```"):
-            # Remove opening fence (```json or ```)
             content = content.split("\n", 1)[-1]
-            # Remove closing fence
             if content.rstrip().endswith("```"):
                 content = content.rstrip()[:-3].rstrip()
 

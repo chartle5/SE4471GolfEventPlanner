@@ -2,14 +2,18 @@ import asyncio
 import math
 import os
 from dataclasses import dataclass
-from typing import List, Sequence
+from typing import Any, List, Sequence
 
 from app.data.knowledge_documents import KNOWLEDGE_DOCUMENTS
-from app.services.openai_client import EMBEDDING_DEPLOYMENT, client
+from sentence_transformers import SentenceTransformer
 
 DEFAULT_CHUNK_WORD_SIZE = int(os.getenv("RAG_CHUNK_WORD_SIZE", "120"))
 DEFAULT_CHUNK_WORD_OVERLAP = int(os.getenv("RAG_CHUNK_WORD_OVERLAP", "30"))
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "3"))
+LOCAL_EMBEDDING_MODEL = os.getenv(
+    "RAG_LOCAL_EMBEDDING_MODEL",
+    "sentence-transformers/all-MiniLM-L6-v2",
+)
 
 
 @dataclass
@@ -31,8 +35,10 @@ class RetrievedChunk:
 
 
 _INDEX_LOCK = asyncio.Lock()
+_MODEL_LOCK = asyncio.Lock()
 _CHUNK_INDEX: List[IndexedChunk] = []
 _INDEX_READY = False
+_EMBEDDING_MODEL: Any = None
 
 
 def _chunk_text(
@@ -94,6 +100,44 @@ def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     return numerator / (math.sqrt(left_norm) * math.sqrt(right_norm))
 
 
+def _load_model() -> SentenceTransformer:
+    global _EMBEDDING_MODEL
+
+    if _EMBEDDING_MODEL is None:
+        _EMBEDDING_MODEL = SentenceTransformer(LOCAL_EMBEDDING_MODEL)
+
+    return _EMBEDDING_MODEL
+
+
+async def _get_model() -> SentenceTransformer:
+    if _EMBEDDING_MODEL is not None:
+        return _EMBEDDING_MODEL
+
+    async with _MODEL_LOCK:
+        if _EMBEDDING_MODEL is not None:
+            return _EMBEDDING_MODEL
+        return await asyncio.to_thread(_load_model)
+
+
+def _encode_texts_sync(texts: Sequence[str]) -> List[List[float]]:
+    model = _load_model()
+    embeddings = model.encode(
+        list(texts),
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        show_progress_bar=False,
+    )
+    return embeddings.tolist()
+
+
+async def _embed_texts(texts: Sequence[str]) -> List[List[float]]:
+    if not texts:
+        return []
+
+    await _get_model()
+    return await asyncio.to_thread(_encode_texts_sync, texts)
+
+
 async def _build_index() -> None:
     global _CHUNK_INDEX, _INDEX_READY
 
@@ -103,10 +147,7 @@ async def _build_index() -> None:
         _INDEX_READY = True
         return
 
-    response = await client.embeddings.create(
-        model=EMBEDDING_DEPLOYMENT,
-        input=[chunk.text for chunk in chunks],
-    )
+    embeddings = await _embed_texts([chunk.text for chunk in chunks])
 
     _CHUNK_INDEX = [
         IndexedChunk(
@@ -114,7 +155,7 @@ async def _build_index() -> None:
             title=chunk.title,
             chunk_id=chunk.chunk_id,
             text=chunk.text,
-            embedding=response.data[index].embedding,
+            embedding=embeddings[index],
         )
         for index, chunk in enumerate(chunks)
     ]
@@ -140,11 +181,7 @@ async def retrieve_relevant_chunks(
 
     await ensure_rag_index()
 
-    response = await client.embeddings.create(
-        model=EMBEDDING_DEPLOYMENT,
-        input=query.strip(),
-    )
-    query_embedding = response.data[0].embedding
+    query_embedding = (await _embed_texts([query.strip()]))[0]
 
     ranked_chunks = [
         RetrievedChunk(
