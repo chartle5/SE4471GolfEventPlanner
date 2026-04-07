@@ -113,12 +113,29 @@ def _normalized_query_variants(query: str) -> list[str]:
             add(" ".join(comma_parts[:2]))
 
     words = raw.replace(",", " ").split()
-    if len(words) >= 2:
+    if len(words) == 2:
         add(" ".join(words[:2]))
-    if words:
+    if words and len(words) == 1:
         add(words[0])
 
     return variants
+
+
+def _looks_like_specific_venue_query(query: str) -> bool:
+    normalized = _normalize_text(query)
+    venue_markers = (
+        "golf course",
+        "golf club",
+        "country club",
+        "club",
+        "course",
+        "municipal",
+        "public",
+        "national",
+        "resort",
+        "links",
+    )
+    return any(marker in normalized for marker in venue_markers)
 
 
 def _query_segments(query: str) -> list[str]:
@@ -351,6 +368,20 @@ async def search_locations(query: str, count: int = 5) -> list[dict[str, Any]]:
 
     normalized_count = max(1, min(count, MAX_LOCATION_RESULTS))
     collected_matches: dict[tuple[Any, Any, str], dict[str, Any]] = {}
+    venue_like_query = _looks_like_specific_venue_query(normalized_query)
+
+    if venue_like_query:
+        nominatim_matches = await _search_locations_nominatim(
+            normalized_query,
+            count=normalized_count,
+        )
+        for match in nominatim_matches:
+            dedupe_key = (
+                match.get("latitude"),
+                match.get("longitude"),
+                match.get("display_name", ""),
+            )
+            collected_matches[dedupe_key] = match
 
     for candidate_query in _normalized_query_variants(normalized_query):
         matches = await _search_locations_exact(candidate_query, count=normalized_count)

@@ -1,8 +1,11 @@
 import asyncio
 import json
+import logging
 import os
+import re
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Literal, Optional
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -50,6 +53,7 @@ DOCUMENT_IMPACT_FIELDS = {
     "cateringDietaryNotes",
 }
 LANGCHAIN_STRUCTURED_METHOD = os.getenv("LANGCHAIN_STRUCTURED_METHOD", "json_schema")
+logger = logging.getLogger("uvicorn.error")
 
 
 class StaffingState(BaseModel):
@@ -224,6 +228,8 @@ Rules:
 - Apply only explicit user requests and high-confidence inferences.
 - If the request is ambiguous, conflicting, or underspecified for a risky change,
   set workflow_action to "clarify" and leave uncertain fields unchanged.
+- Do not use workflow_action="clarify" just because other required tournament fields
+  are still missing. Missing planning fields can be handled later in a natural follow-up.
 - Use retrieved knowledge snippets only as guidance.
 - If eventType is "individual", set teamSize to 1 in the candidate object.
 - If the user mentions catering or food, set cateringEnabled to true and set
@@ -235,6 +241,12 @@ Rules:
 - If the user is setting a tournament field based on sunrise or sunset, keep
   response_mode as "planner_workflow", preserve any explicit field updates in the
   candidate_tournament, and use tool_plan to describe the required MCP lookup.
+- If the user greets you, responds casually, or asks if you are aware of a venue,
+  treat that as normal conversation within planning, not as a reason to force a
+  missing-field question.
+- If the user both updates tournament state and asks a direct question, preserve the
+  updates and leave enough information in the result for the final response to answer
+  the question naturally.
 - When a tool-dependent value such as "10 minutes after sunrise" is requested, do not
   invent the final clock time. Leave the unresolved target field unchanged in
   candidate_tournament until the tool result is available.
@@ -265,9 +277,23 @@ Return structured output with exactly these top-level fields:
 
 Rules:
 - Use the supplied target boolean values exactly.
-- If finalAction is "clarify", ask one focused question and preserve any safe
-  candidate updates already made.
-- If finalAction is "respond", confirm the update concisely.
+- The assistant should feel like a real planning partner, not a form validator.
+- Always react to the user's latest message first.
+- If the user greeted you, greet them naturally before moving the conversation forward.
+- If the user asked a direct question, answer it clearly even if other planning fields
+  are still missing.
+- If tournament state changed, confirm the important updates in natural language.
+- If a live-data tool result is provided, explicitly say what was found and how it was
+  used. For sunrise or sunset calculations, explain the calculation briefly.
+- If finalAction is "clarify", ask one focused clarification question while preserving
+  any safe candidate updates already made.
+- If finalAction is "respond", do not sound like a checklist. After acknowledging and
+  answering, you may guide the conversation toward one useful next detail.
+- When the tournament is still incomplete, prefer one contextual next-step suggestion
+  over a rigid required-field interrogation.
+- Do not list every missing field unless the user explicitly asks.
+- Do not ignore the user's actual request just because format or other required fields
+  are still missing.
 - If responseMode is "live_data_reply", answer the live-data question directly and do
   not add an unrelated planning follow-up question.
 - If a live-data tool result is provided, use that data directly and do not guess.
@@ -463,6 +489,263 @@ def _preview_text(text: str, limit: int = 160) -> str:
     return compact[: limit - 3].rstrip() + "..."
 
 
+def _env_flag(name: str, default: str = "false") -> bool:
+    value = os.getenv(name, default)
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+LOG_CHAT_TRACE = _env_flag("LOG_CHAT_TRACE", "true")
+
+
+def _short_request_id() -> str:
+    return uuid4().hex[:8]
+
+
+def _summarize_tournament_state(tournament: Dict[str, Any]) -> str:
+    interesting_fields = []
+    for field in (
+        "name",
+        "date",
+        "venue",
+        "format",
+        "playerCount",
+        "eventType",
+        "teamSize",
+        "registrationDeadline",
+        "teeTimeStart",
+        "teeTimeInterval",
+    ):
+        value = tournament.get(field)
+        if value in ("", 0, None):
+            continue
+        interesting_fields.append(f"{field}={value}")
+    return ", ".join(interesting_fields) or "no tournament fields set"
+
+
+def _changed_fields_summary(
+    before: Dict[str, Any],
+    after: Dict[str, Any],
+    limit: int = 6,
+) -> str:
+    changed = [
+        field
+        for field in sorted(set(before) | set(after))
+        if before.get(field) != after.get(field)
+    ]
+    if not changed:
+        return "none"
+    if len(changed) <= limit:
+        return ", ".join(changed)
+    return ", ".join(changed[:limit]) + f", +{len(changed) - limit} more"
+
+
+def _build_changed_fields_payload(
+    before: Dict[str, Any],
+    after: Dict[str, Any],
+) -> Dict[str, Dict[str, Any]]:
+    payload: Dict[str, Dict[str, Any]] = {}
+    for field in sorted(set(before) | set(after)):
+        if before.get(field) == after.get(field):
+            continue
+        payload[field] = {
+            "before": before.get(field),
+            "after": after.get(field),
+        }
+    return payload
+
+
+def _is_greeting(message: str) -> bool:
+    return re.search(r"\b(hi|hello|hey|good morning|good afternoon|good evening)\b", message, re.IGNORECASE) is not None
+
+
+def _human_field_label(field: str) -> str:
+    labels = {
+        "name": "tournament name",
+        "date": "start date",
+        "venue": "venue",
+        "format": "format",
+        "numberOfDays": "number of days",
+        "playerCount": "player count",
+        "eventType": "event type",
+        "teamSize": "team size",
+        "registrationDeadline": "registration deadline",
+        "teeTimeStart": "first tee time",
+        "teeTimeInterval": "tee time interval",
+    }
+    return labels.get(field, field)
+
+
+def _format_changed_field_statement(field: str, change: Dict[str, Any]) -> str:
+    after = change.get("after")
+    if field == "name":
+        return f"set the tournament name to {after}"
+    if field == "date":
+        return f"set the start date to {after}"
+    if field == "venue":
+        return f"set the venue to {after}"
+    if field == "format":
+        return f"set the format to {after}"
+    if field == "numberOfDays":
+        return f"set the tournament to run for {after} day{'s' if after != 1 else ''}"
+    if field == "playerCount":
+        return f"set the player count to {after}"
+    if field == "eventType":
+        return f"set the event type to {after}"
+    if field == "teamSize":
+        return f"set the team size to {after}"
+    if field == "registrationDeadline":
+        return f"set the registration deadline to {after}"
+    if field == "teeTimeStart":
+        return f"set the first tee time to {after}"
+    if field == "teeTimeInterval":
+        return f"set the tee time interval to {after} minutes"
+    return f"updated {field} to {after}"
+
+
+def _join_phrases(phrases: List[str]) -> str:
+    if not phrases:
+        return ""
+    if len(phrases) == 1:
+        return phrases[0]
+    if len(phrases) == 2:
+        return f"{phrases[0]} and {phrases[1]}"
+    return ", ".join(phrases[:-1]) + f", and {phrases[-1]}"
+
+
+def _safe_parse_tool_context(tool_context: str) -> Dict[str, Any]:
+    try:
+        payload = json.loads(tool_context)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+    return {}
+
+
+def _fallback_conversational_response(
+    user_message: str,
+    original_tournament: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+    validation_result: Dict[str, Any],
+    analysis_result: Dict[str, Any],
+    tool_context: str,
+    phase: str,
+) -> str:
+    lowered = user_message.lower()
+    changes = _build_changed_fields_payload(original_tournament, candidate_tournament)
+    tool_payload = _safe_parse_tool_context(tool_context)
+    response_parts: List[str] = []
+
+    if _is_greeting(user_message) and not changes:
+        response_parts.append("Hi! Happy to help you plan your tournament.")
+    elif changes:
+        ordered_fields = [
+            field
+            for field in (
+                "name",
+                "date",
+                "venue",
+                "format",
+                "numberOfDays",
+                "playerCount",
+                "eventType",
+                "teamSize",
+                "registrationDeadline",
+                "teeTimeStart",
+                "teeTimeInterval",
+            )
+            if field in changes
+        ]
+        update_bits = [_format_changed_field_statement(field, changes[field]) for field in ordered_fields]
+        if update_bits:
+            response_parts.append(f"I've {_join_phrases(update_bits)}.")
+
+    if "aware of this course" in lowered or "aware of this venue" in lowered:
+        venue = str(candidate_tournament.get("venue", "")).strip()
+        if venue:
+            response_parts.append(
+                f"Yes, I can work with {venue} as your venue and use that location for planning details like tee times, sunrise, and logistics."
+            )
+
+    if (
+        analysis_result.get("tool_plan", {}).get("tool_purpose") == "set_tournament_time_from_sun_event"
+        and tool_payload
+    ):
+        sun_event = str(analysis_result.get("tool_plan", {}).get("sun_event", "sunrise"))
+        base_value = tool_payload.get(f"{sun_event}_hm", "")
+        applied_value = tool_payload.get("applied_value", "")
+        offset_minutes = int(analysis_result.get("tool_plan", {}).get("offset_minutes", 0) or 0)
+        if base_value and applied_value:
+            relation = "after" if offset_minutes >= 0 else "before"
+            offset_abs = abs(offset_minutes)
+            response_parts.append(
+                f"{sun_event.capitalize()} for that date is {base_value}, so I set the first tee time to {applied_value} by applying {offset_abs} minutes {relation} {sun_event}."
+            )
+
+    if not response_parts:
+        if validation_result["final_action"] == "clarify":
+            response_parts.append(validation_result["suggested_question"])
+        else:
+            response_parts.append("I updated the tournament details.")
+
+    if validation_result["final_action"] == "clarify":
+        if response_parts[-1] != validation_result["suggested_question"]:
+            response_parts.append(validation_result["suggested_question"])
+    elif phase == "planning" and validation_result["missing_fields"]:
+        next_field = validation_result["missing_fields"][0]
+        if _is_greeting(user_message) and not changes:
+            response_parts.append("What would you like to set up first?")
+        else:
+            response_parts.append(
+                f"Next, we can sort out the {_human_field_label(next_field)} when you're ready."
+            )
+
+    return " ".join(part.strip() for part in response_parts if part.strip())
+
+
+def _summarize_tool_plan(tool_plan: Dict[str, Any]) -> str:
+    if not tool_plan.get("requires_tool"):
+        return "no MCP tool needed"
+
+    parts = [
+        f"tool={tool_plan.get('tool_name')}",
+        f"purpose={tool_plan.get('tool_purpose')}",
+    ]
+    if tool_plan.get("location_query"):
+        parts.append(f"location={tool_plan['location_query']}")
+    elif tool_plan.get("use_candidate_venue"):
+        parts.append("location=<candidate venue>")
+    if tool_plan.get("target_date"):
+        parts.append(f"date={tool_plan['target_date']}")
+    elif tool_plan.get("use_candidate_date"):
+        parts.append("date=<candidate date>")
+    if tool_plan.get("sun_event") and tool_plan.get("sun_event") != "none":
+        parts.append(f"sun_event={tool_plan['sun_event']}")
+    if tool_plan.get("offset_minutes"):
+        parts.append(f"offset={tool_plan['offset_minutes']}m")
+    if tool_plan.get("target_field"):
+        parts.append(f"target_field={tool_plan['target_field']}")
+    if tool_plan.get("latitude") is not None and tool_plan.get("longitude") is not None:
+        parts.append(f"coords={tool_plan['latitude']},{tool_plan['longitude']}")
+    return ", ".join(parts)
+
+
+def _trace(request_id: str, step: str, **details: Any) -> None:
+    if not LOG_CHAT_TRACE:
+        return
+
+    parts = [f"[chat:{request_id}] {step}"]
+    for key, value in details.items():
+        if value in (None, "", [], {}):
+            continue
+        if isinstance(value, str):
+            rendered = value
+        else:
+            rendered = str(value)
+        parts.append(f"{key}={rendered}")
+    logger.info(" | ".join(parts))
+
+
 def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
     return [
         {
@@ -536,6 +819,7 @@ async def _call_structured_step(
     retrieved_chunks: List[Any],
     retrieval_error: Optional[str] = None,
     extra_debug: Optional[Dict[str, Any]] = None,
+    request_id: str = "",
 ) -> Dict[str, Any]:
     log_messages = [
         {"role": "system", "content": system_prompt},
@@ -552,6 +836,12 @@ async def _call_structured_step(
         retrieved_chunks,
         retrieval_error,
         extra_debug,
+    )
+    _trace(
+        request_id,
+        f"LLM {step_name.upper()} START",
+        retrieval_chunks=len(retrieved_chunks),
+        retrieval_error=retrieval_error or "",
     )
 
     llm = get_langchain_chat_model(temperature=0.2)
@@ -577,6 +867,11 @@ async def _call_structured_step(
     _log_debug_block(
         f"LLM STEP {step_name.upper()} RESULT",
         {"step": step_name, "parsed": parsed_payload},
+    )
+    _trace(
+        request_id,
+        f"LLM {step_name.upper()} RESULT",
+        preview=_preview_text(json.dumps(parsed_payload, ensure_ascii=False), 220),
     )
     return parsed_payload
 
@@ -794,8 +1089,10 @@ async def _execute_tool_plan(
     tool_plan: Dict[str, Any],
     candidate_tournament: Dict[str, Any],
     phase: str,
+    request_id: str = "",
 ) -> Dict[str, Any]:
     if not tool_plan.get("requires_tool"):
+        _trace(request_id, "MCP SKIPPED", reason="no tool needed")
         return {
             "used": False,
             "candidate_tournament": candidate_tournament,
@@ -805,6 +1102,11 @@ async def _execute_tool_plan(
 
     tool_name = str(tool_plan.get("tool_name", "none"))
     tool_purpose = str(tool_plan.get("tool_purpose", "none"))
+    _trace(
+        request_id,
+        "MCP PLAN",
+        summary=_summarize_tool_plan(tool_plan),
+    )
 
     try:
         if tool_name == "get_weather_forecast_by_coordinates":
@@ -823,6 +1125,15 @@ async def _execute_tool_plan(
                 latitude=float(latitude),
                 longitude=float(longitude),
                 forecast_days=int(tool_plan.get("forecast_days", 3) or 3),
+            )
+            resolved_location = (weather.get("resolved_location") or {}).get("display_name", "")
+            current_weather = weather.get("current_weather") or {}
+            _trace(
+                request_id,
+                "MCP RESULT",
+                tool=tool_name,
+                resolved_location=resolved_location or f"{latitude},{longitude}",
+                weather=f"{current_weather.get('weather_summary', '')} {_format_value(current_weather.get('temperature_c'), 'C')}".strip(),
             )
             tool_context = json.dumps(
                 {
@@ -855,6 +1166,15 @@ async def _execute_tool_plan(
             weather = await get_weather_forecast_via_mcp(
                 location_query=location_query,
                 forecast_days=int(tool_plan.get("forecast_days", 3) or 3),
+            )
+            resolved_location = (weather.get("resolved_location") or {}).get("display_name", "")
+            current_weather = weather.get("current_weather") or {}
+            _trace(
+                request_id,
+                "MCP RESULT",
+                tool=tool_name,
+                resolved_location=resolved_location or location_query,
+                weather=f"{current_weather.get('weather_summary', '')} {_format_value(current_weather.get('temperature_c'), 'C')}".strip(),
             )
             tool_context = json.dumps(
                 {
@@ -914,6 +1234,16 @@ async def _execute_tool_plan(
                     int(tool_plan.get("offset_minutes", 0) or 0),
                 )
                 updated_tournament[target_field] = applied_value
+            resolved_location = (sun_times.get("resolved_location") or {}).get("display_name", "")
+            _trace(
+                request_id,
+                "MCP RESULT",
+                tool=tool_name,
+                resolved_location=resolved_location or location_query,
+                sunrise=sun_times.get("sunrise_hm", ""),
+                sunset=sun_times.get("sunset_hm", ""),
+                applied_value=applied_value,
+            )
 
             tool_context = json.dumps(
                 {
@@ -950,6 +1280,7 @@ async def _execute_tool_plan(
             message = f"I couldn't resolve the venue for the sunrise or sunset lookup. {exc}"
         else:
             message = f"I couldn't resolve that location for live weather lookup. {exc}"
+        _trace(request_id, "MCP ERROR", tool=tool_name, error=message)
         return {
             "direct_response": _build_tool_error_response(
                 message,
@@ -962,6 +1293,7 @@ async def _execute_tool_plan(
             f"I couldn't reach the live weather service. {exc} "
             f"Make sure the local MCP server is running at `{MCP_WEATHER_SERVER_URL}`."
         )
+        _trace(request_id, "MCP ERROR", tool=tool_name, error=message)
         return {
             "direct_response": _build_tool_error_response(
                 message,
@@ -1144,7 +1476,6 @@ def _build_validation_result(
     if (
         analysis_result["workflow_action"] == "clarify"
         or constraint_issues
-        or (phase == "planning" and missing_fields)
     ):
         final_action = "clarify"
 
@@ -1225,10 +1556,18 @@ async def handle_chat(
     history: Optional[List[Dict[str, str]]] = None,
     phase: str = "planning",
 ) -> Dict[str, Any]:
+    request_id = _short_request_id()
     phase = "refinement" if phase == "refinement" else "planning"
     tournament = _normalize_tournament(tournament)
     analysis_failed = False
     analysis_failure_error = ""
+    _trace(
+        request_id,
+        "REQUEST",
+        phase=phase,
+        user=_preview_text(user_message, 180),
+        tournament=_summarize_tournament_state(tournament),
+    )
 
     retrieved_chunks: List[Any] = []
     retrieval_query = _build_retrieval_query(user_message, tournament)
@@ -1247,6 +1586,12 @@ async def handle_chat(
     except Exception as exc:
         retrieval_error = str(exc)
         retrieved_chunks = []
+    _trace(
+        request_id,
+        "RETRIEVAL",
+        chunks=len(retrieved_chunks),
+        error=retrieval_error or "",
+    )
 
     today_str = date.today().strftime("%B %d, %Y")
     history_block = _build_history_block(history)
@@ -1273,6 +1618,7 @@ async def handle_chat(
             retrieved_chunks,
             retrieval_error,
             extra_debug={"phase": phase},
+            request_id=request_id,
         )
         analysis_result = _normalize_analysis_result(raw_analysis, tournament)
     except Exception as exc:
@@ -1292,13 +1638,32 @@ async def handle_chat(
             "WORKFLOW ANALYSIS FALLBACK",
             {"error": str(exc), "analysis_result": analysis_result},
         )
+    _trace(
+        request_id,
+        "ANALYSIS",
+        mode=analysis_result["response_mode"],
+        action=analysis_result["workflow_action"],
+        reason=analysis_result["reasoning_summary"],
+        tool=_summarize_tool_plan(analysis_result.get("tool_plan", {})),
+        candidate_changes=_changed_fields_summary(tournament, analysis_result["candidate_tournament"]),
+    )
 
     tool_result = await _execute_tool_plan(
         analysis_result.get("tool_plan", {}),
         analysis_result["candidate_tournament"],
         phase,
+        request_id=request_id,
     )
     if tool_result.get("direct_response") is not None:
+        direct_response = tool_result["direct_response"]
+        _trace(
+            request_id,
+            "RESPONSE",
+            message=_preview_text(str(direct_response.get("message", "")), 180),
+            changed_fields=_changed_fields_summary(tournament, direct_response.get("tournament", tournament)),
+            ready=direct_response.get("ready_for_generation", False),
+            regenerate=direct_response.get("needs_regeneration", False),
+        )
         return tool_result["direct_response"]
 
     analysis_result["candidate_tournament"] = _normalize_tournament(
@@ -1321,6 +1686,15 @@ async def handle_chat(
         }
     else:
         validation_result = _build_validation_result(tournament, analysis_result, phase)
+    _trace(
+        request_id,
+        "VALIDATION",
+        final_action=validation_result["final_action"],
+        missing=", ".join(validation_result["missing_fields"]) or "none",
+        issues=", ".join(issue["field"] for issue in validation_result["constraint_issues"]) or "none",
+        ready=validation_result["ready_for_generation"],
+        regenerate=validation_result["needs_regeneration"],
+    )
 
     _log_debug_block(
         "WORKFLOW VALIDATION",
@@ -1329,6 +1703,10 @@ async def handle_chat(
             "analysis_result": analysis_result,
             "validation_result": validation_result,
         },
+    )
+    changed_fields_payload = _build_changed_fields_payload(
+        tournament,
+        analysis_result["candidate_tournament"],
     )
 
     finalizer_prompt = (
@@ -1344,10 +1722,20 @@ async def handle_chat(
         f"[Current tournament state]\n{json.dumps(tournament, indent=2)}\n\n"
         f"[Candidate tournament state]\n"
         f"{json.dumps(analysis_result['candidate_tournament'], indent=2)}\n\n"
+        f"[State changes from this turn]\n"
+        f"{json.dumps(changed_fields_payload, indent=2)}\n\n"
         f"[Workflow analysis]\n{json.dumps(analysis_result, indent=2)}\n\n"
         f"[Validation summary]\n{json.dumps(validation_result, indent=2)}\n\n"
         f"[Live data tool result]\n{live_data_context}\n\n"
         f"[Retrieved knowledge snippets]\n{retrieved_context}\n"
+    )
+    _trace(
+        request_id,
+        "FINALIZER INPUT",
+        mode=analysis_result["response_mode"],
+        final_action=validation_result["final_action"],
+        tool_used=analysis_result.get("tool_plan", {}).get("tool_name", "none"),
+        candidate_changes=_changed_fields_summary(tournament, analysis_result["candidate_tournament"]),
     )
 
     if analysis_failed:
@@ -1377,6 +1765,7 @@ async def handle_chat(
                 retrieved_chunks,
                 retrieval_error,
                 extra_debug={"phase": phase, "validation": validation_result},
+                request_id=request_id,
             )
             final_tournament_raw = raw_final.get(
                 "tournament",
@@ -1391,7 +1780,15 @@ async def handle_chat(
             final_message = str(raw_final.get("message", "")).strip()
         except Exception as exc:
             final_tournament = analysis_result["candidate_tournament"]
-            final_message = validation_result["suggested_question"]
+            final_message = _fallback_conversational_response(
+                user_message=user_message,
+                original_tournament=tournament,
+                candidate_tournament=final_tournament,
+                validation_result=validation_result,
+                analysis_result=analysis_result,
+                tool_context=live_data_context,
+                phase=phase,
+            )
             _log_debug_block(
                 "WORKFLOW FINALIZER FALLBACK",
                 {"error": str(exc), "message": final_message},
@@ -1418,10 +1815,19 @@ async def handle_chat(
     if not final_message:
         final_message = "I updated the tournament."
 
-    return {
+    response_payload = {
         "message": final_message,
         "tournament": final_tournament,
         "ready_for_generation": ready_for_generation,
         "needs_regeneration": validation_result["needs_regeneration"],
         "sources": live_data_sources + _serialize_sources(retrieved_chunks),
     }
+    _trace(
+        request_id,
+        "RESPONSE",
+        message=_preview_text(final_message, 180),
+        changed_fields=_changed_fields_summary(tournament, final_tournament),
+        ready=ready_for_generation,
+        regenerate=validation_result["needs_regeneration"],
+    )
+    return response_payload
