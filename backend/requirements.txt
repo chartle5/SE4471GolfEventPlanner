@@ -4,6 +4,8 @@ python-dotenv
 certifi
 pydantic
 openai
+langchain
+langchain-openai
 sentence-transformers
 motor
 pymongo[srv]

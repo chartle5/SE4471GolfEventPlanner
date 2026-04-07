@@ -1,18 +1,28 @@
 import asyncio
 import json
 import os
-from datetime import date, datetime
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime, timedelta
+from typing import Any, Dict, List, Literal, Optional
 
-from app.services.openai_client import CHAT_DEPLOYMENT, LOG_LLM_PROMPTS, client
+from pydantic import BaseModel, Field
+
+from app.services.mcp_weather_client import (
+    MCP_WEATHER_SERVER_URL,
+    WeatherMcpClientError,
+    WeatherLocationResolutionError,
+    get_sun_times_for_location_via_mcp,
+    get_weather_forecast_by_coordinates_via_mcp,
+    get_weather_forecast_via_mcp,
+)
+from app.services.openai_client import (
+    CHAT_DEPLOYMENT,
+    LOG_LLM_PROMPTS,
+    get_langchain_chat_model,
+)
 from app.services.rag import (
     LOCAL_EMBEDDING_MODEL,
     format_retrieved_context,
     retrieve_relevant_chunks,
-)
-from app.services.weather_chat import (
-    maybe_handle_tournament_sun_time_request,
-    maybe_handle_weather_query,
 )
 
 DEPLOYMENT = CHAT_DEPLOYMENT
@@ -39,6 +49,85 @@ DOCUMENT_IMPACT_FIELDS = {
     "cateringServingTime",
     "cateringDietaryNotes",
 }
+LANGCHAIN_STRUCTURED_METHOD = os.getenv("LANGCHAIN_STRUCTURED_METHOD", "json_schema")
+
+
+class StaffingState(BaseModel):
+    volunteers: int = 0
+    staff: int = 0
+
+
+class TournamentState(BaseModel):
+    id: str = ""
+    name: str = ""
+    date: str = ""
+    venue: str = ""
+    format: str = ""
+    numberOfDays: int = 0
+    playerCount: int = 0
+    eventType: str = ""
+    teamSize: int = 0
+    registrationDeadline: str = ""
+    entryFee: int = 0
+    description: str = ""
+    teeTimeStart: str = "08:00"
+    teeTimeInterval: int = 12
+    sponsors: List[str] = Field(default_factory=list)
+    catering: str = ""
+    budget: int = 0
+    cateringEnabled: bool = False
+    cateringBudget: int = 0
+    cateringStyle: str = ""
+    cateringServingTime: str = ""
+    cateringDietaryNotes: str = ""
+    staffing: StaffingState = Field(default_factory=StaffingState)
+    accessibility: str = ""
+    notes: str = ""
+    constraints: List[str] = Field(default_factory=list)
+
+
+class ToolPlan(BaseModel):
+    requires_tool: bool = False
+    tool_name: Literal[
+        "none",
+        "get_weather_forecast",
+        "get_weather_forecast_by_coordinates",
+        "get_sun_times_for_location",
+    ] = "none"
+    tool_purpose: Literal[
+        "none",
+        "weather_reply",
+        "sun_time_reply",
+        "set_tournament_time_from_sun_event",
+    ] = "none"
+    location_query: str = ""
+    use_candidate_venue: bool = False
+    target_date: str = ""
+    use_candidate_date: bool = False
+    forecast_days: int = 3
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    target_field: str = ""
+    sun_event: Literal["none", "sunrise", "sunset"] = "none"
+    offset_minutes: int = 0
+
+
+class WorkflowAnalysisOutput(BaseModel):
+    response_mode: Literal["planner_workflow", "live_data_reply"] = "planner_workflow"
+    workflow_action: Literal["update", "clarify"] = "update"
+    reasoning_summary: str = ""
+    clarifying_focus: str = ""
+    clarifying_question: str = ""
+    candidate_tournament: TournamentState = Field(default_factory=TournamentState)
+    user_requested_regeneration: bool = False
+    tool_plan: ToolPlan = Field(default_factory=ToolPlan)
+
+
+class WorkflowFinalizerOutput(BaseModel):
+    message: str = ""
+    tournament: TournamentState = Field(default_factory=TournamentState)
+    ready_for_generation: bool = False
+    needs_regeneration: bool = False
 
 PLANNING_SYSTEM_PROMPT = """
 You are an AI golf tournament planning assistant.
@@ -117,29 +206,48 @@ WORKFLOW_ANALYZER_SYSTEM_PROMPT = """
 You are step 1 in a multi-step workflow for a golf tournament assistant.
 
 Your task is to analyze the latest user message, draft the safest possible updated
-tournament object, and decide whether clarification is needed before a final answer
-is generated.
+tournament object, decide whether clarification is needed, and determine whether a
+live-data MCP tool is needed before the final answer is generated.
 
-Return ONLY valid JSON with exactly these top-level fields:
-  "workflowAction"           - "update" or "clarify"
-  "reasoningSummary"         - one short sentence summarizing the decision
-  "clarifyingFocus"          - field name or issue label, or "" if none
-  "clarifyingQuestion"       - one short question if clarification is needed, else ""
-  "candidateTournament"      - the full drafted tournament object
-  "userRequestedRegeneration" - boolean
+Return structured output with exactly these top-level fields:
+  response_mode              - "planner_workflow" or "live_data_reply"
+  workflow_action            - "update" or "clarify"
+  reasoning_summary          - one short sentence summarizing the decision
+  clarifying_focus           - field name or issue label, or "" if none
+  clarifying_question        - one short question if clarification is needed, else ""
+  candidate_tournament       - the full drafted tournament object
+  user_requested_regeneration - boolean
+  tool_plan                  - nested tool plan object
 
 Rules:
 - Preserve the existing object structure.
 - Apply only explicit user requests and high-confidence inferences.
 - If the request is ambiguous, conflicting, or underspecified for a risky change,
-  set "workflowAction" to "clarify" and leave uncertain fields unchanged.
+  set workflow_action to "clarify" and leave uncertain fields unchanged.
 - Use retrieved knowledge snippets only as guidance.
 - If eventType is "individual", set teamSize to 1 in the candidate object.
 - If the user mentions catering or food, set cateringEnabled to true and set
-  clarifyingFocus to "cateringBudget" if cateringBudget is still 0.
+  clarifying_focus to "cateringBudget" if cateringBudget is still 0.
 - Always include cateringEnabled (boolean), cateringBudget (number), cateringStyle,
   cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
-- Do not output markdown or extra text.
+- If the user is asking for live weather, sunrise, or sunset information without changing
+  tournament fields, set response_mode to "live_data_reply".
+- If the user is setting a tournament field based on sunrise or sunset, keep
+  response_mode as "planner_workflow", preserve any explicit field updates in the
+  candidate_tournament, and use tool_plan to describe the required MCP lookup.
+- When a tool-dependent value such as "10 minutes after sunrise" is requested, do not
+  invent the final clock time. Leave the unresolved target field unchanged in
+  candidate_tournament until the tool result is available.
+- Never treat phrases like "10 minutes after sunrise", "30 minutes before sunset",
+  or similar offset expressions as locations.
+- If a tool is needed, populate tool_plan precisely:
+  requires_tool, tool_name, tool_purpose, location_query, use_candidate_venue,
+  target_date, use_candidate_date, forecast_days, latitude, longitude, target_field,
+  sun_event, offset_minutes.
+- For sunrise/sunset offsets:
+  "10 minutes after sunrise" => sun_event="sunrise", offset_minutes=10
+  "30 minutes before sunset" => sun_event="sunset", offset_minutes=-30
+- If no tool is needed, set tool_plan.requires_tool to false and tool_name to "none".
 """
 
 WORKFLOW_FINALIZER_SYSTEM_PROMPT = """
@@ -149,21 +257,23 @@ A previous step already drafted a candidate tournament update. A deterministic
 validation step has already checked missing fields, rule violations, regeneration
 impact, and the required next action.
 
-Return ONLY valid JSON with exactly these top-level fields:
-  "message"            - natural-language response
-  "tournament"         - full updated tournament object
-  "readyForGeneration" - boolean
-  "needsRegeneration"  - boolean
+Return structured output with exactly these top-level fields:
+  message               - natural-language response
+  tournament            - full updated tournament object
+  ready_for_generation  - boolean
+  needs_regeneration    - boolean
 
 Rules:
 - Use the supplied target boolean values exactly.
 - If finalAction is "clarify", ask one focused question and preserve any safe
   candidate updates already made.
 - If finalAction is "respond", confirm the update concisely.
+- If responseMode is "live_data_reply", answer the live-data question directly and do
+  not add an unrelated planning follow-up question.
+- If a live-data tool result is provided, use that data directly and do not guess.
 - If planning mode is ready for generation, the message must be exactly:
   "Great — I have all the information I need. Click the green button on the right to start generating your documents."
 - Use retrieved knowledge only as guidance.
-- Do not output markdown or extra text.
 """
 
 EXAMPLE_EMPTY_TOURNAMENT = {
@@ -409,78 +519,456 @@ def _log_llm_step(
     _log_debug_block("LLM PROMPT DEBUG", payload)
 
 
-def _strip_code_fences(content: str) -> str:
-    stripped = content.strip()
-    if stripped.startswith("```"):
-        stripped = stripped.split("\n", 1)[-1]
-        if stripped.rstrip().endswith("```"):
-            stripped = stripped.rstrip()[:-3].rstrip()
-    return stripped
+def _structured_output_to_dict(payload: Any) -> Dict[str, Any]:
+    if isinstance(payload, BaseModel):
+        return payload.model_dump()
+    if isinstance(payload, dict):
+        return payload
+    raise TypeError("Structured LLM step returned an invalid payload type.")
 
 
-async def _call_json_step(
+async def _call_structured_step(
     step_name: str,
     system_prompt: str,
     user_prompt: str,
+    schema: type[BaseModel],
     retrieval_query: str,
     retrieved_chunks: List[Any],
     retrieval_error: Optional[str] = None,
     extra_debug: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    messages = [
+    log_messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt},
     ]
+    model_messages = [
+        ("system", system_prompt),
+        ("human", user_prompt),
+    ]
     _log_llm_step(
         step_name,
-        messages,
+        log_messages,
         retrieval_query,
         retrieved_chunks,
         retrieval_error,
         extra_debug,
     )
 
-    response = await asyncio.wait_for(
-        client.chat.completions.create(
-            model=DEPLOYMENT,
-            temperature=0.2,
-            messages=messages,
-        ),
-        timeout=LLM_REQUEST_TIMEOUT_SECONDS,
-    )
-    content = _strip_code_fences(response.choices[0].message.content or "")
-    parsed = json.loads(content)
+    llm = get_langchain_chat_model(temperature=0.2)
+    try:
+        structured_llm = llm.with_structured_output(
+            schema,
+            method=LANGCHAIN_STRUCTURED_METHOD,
+        )
+        parsed = await asyncio.wait_for(
+            structured_llm.ainvoke(model_messages),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+        )
+    except Exception:
+        if LANGCHAIN_STRUCTURED_METHOD != "json_schema":
+            raise
+        structured_llm = llm.with_structured_output(schema)
+        parsed = await asyncio.wait_for(
+            structured_llm.ainvoke(model_messages),
+            timeout=LLM_REQUEST_TIMEOUT_SECONDS,
+        )
 
+    parsed_payload = _structured_output_to_dict(parsed)
     _log_debug_block(
         f"LLM STEP {step_name.upper()} RESULT",
-        {"step": step_name, "parsed": parsed},
+        {"step": step_name, "parsed": parsed_payload},
     )
+    return parsed_payload
 
-    return parsed
+
+def _normalize_iso_date(value: str) -> str:
+    if not value or not value.strip():
+        return ""
+
+    raw = value.strip()
+    for fmt in ("%Y-%m-%d", "%B %d, %Y", "%b %d, %Y", "%B %d %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return ""
+
+
+def _normalize_tool_plan(payload: Any) -> Dict[str, Any]:
+    raw = payload if isinstance(payload, dict) else {}
+    tool_name = str(raw.get("tool_name", "none")).strip()
+    if tool_name not in {
+        "none",
+        "get_weather_forecast",
+        "get_weather_forecast_by_coordinates",
+        "get_sun_times_for_location",
+    }:
+        tool_name = "none"
+
+    tool_purpose = str(raw.get("tool_purpose", "none")).strip()
+    if tool_purpose not in {
+        "none",
+        "weather_reply",
+        "sun_time_reply",
+        "set_tournament_time_from_sun_event",
+    }:
+        tool_purpose = "none"
+
+    sun_event = str(raw.get("sun_event", "none")).strip().lower()
+    if sun_event not in {"none", "sunrise", "sunset"}:
+        sun_event = "none"
+
+    def _float_or_none(value: Any) -> Optional[float]:
+        if value in (None, ""):
+            return None
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return None
+
+    try:
+        forecast_days = int(raw.get("forecast_days", 3) or 3)
+    except (TypeError, ValueError):
+        forecast_days = 3
+
+    try:
+        offset_minutes = int(raw.get("offset_minutes", 0) or 0)
+    except (TypeError, ValueError):
+        offset_minutes = 0
+
+    return {
+        "requires_tool": bool(raw.get("requires_tool")) and tool_name != "none",
+        "tool_name": tool_name,
+        "tool_purpose": tool_purpose,
+        "location_query": str(raw.get("location_query", "")).strip(),
+        "use_candidate_venue": bool(raw.get("use_candidate_venue")),
+        "target_date": _normalize_iso_date(str(raw.get("target_date", "")).strip()),
+        "use_candidate_date": bool(raw.get("use_candidate_date")),
+        "forecast_days": max(1, min(forecast_days, 16)),
+        "latitude": _float_or_none(raw.get("latitude")),
+        "longitude": _float_or_none(raw.get("longitude")),
+        "target_field": str(raw.get("target_field", "")).strip(),
+        "sun_event": sun_event,
+        "offset_minutes": offset_minutes,
+    }
 
 
 def _normalize_analysis_result(
     analysis: Dict[str, Any],
     tournament: Dict[str, Any],
 ) -> Dict[str, Any]:
-    workflow_action = str(analysis.get("workflowAction", "update")).strip().lower()
+    workflow_action = str(analysis.get("workflow_action", "update")).strip().lower()
     if workflow_action not in {"update", "clarify"}:
         workflow_action = "update"
 
-    candidate_raw = analysis.get("candidateTournament", tournament)
+    response_mode = str(analysis.get("response_mode", "planner_workflow")).strip().lower()
+    if response_mode not in {"planner_workflow", "live_data_reply"}:
+        response_mode = "planner_workflow"
+
+    candidate_raw = analysis.get("candidate_tournament", tournament)
+    if isinstance(candidate_raw, BaseModel):
+        candidate_raw = candidate_raw.model_dump()
     if not isinstance(candidate_raw, dict):
         candidate_raw = tournament
 
     return {
+        "response_mode": response_mode,
         "workflow_action": workflow_action,
-        "reasoning_summary": str(analysis.get("reasoningSummary", "")).strip(),
-        "clarifying_focus": str(analysis.get("clarifyingFocus", "")).strip(),
-        "clarifying_question": str(analysis.get("clarifyingQuestion", "")).strip(),
+        "reasoning_summary": str(analysis.get("reasoning_summary", "")).strip(),
+        "clarifying_focus": str(analysis.get("clarifying_focus", "")).strip(),
+        "clarifying_question": str(analysis.get("clarifying_question", "")).strip(),
         "candidate_tournament": _normalize_tournament(candidate_raw),
         "user_requested_regeneration": bool(
-            analysis.get("userRequestedRegeneration", False)
+            analysis.get("user_requested_regeneration", False)
         ),
+        "tool_plan": _normalize_tool_plan(analysis.get("tool_plan")),
     }
+
+
+def _format_value(value: Any, suffix: str = "") -> str:
+    if value is None:
+        return ""
+    if isinstance(value, float):
+        if value.is_integer():
+            return f"{int(value)}{suffix}"
+        return f"{value:.1f}{suffix}"
+    return f"{value}{suffix}"
+
+
+def _format_timestamp(value: Any) -> str:
+    if not value:
+        return ""
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%I:%M %p").lstrip("0")
+    except ValueError:
+        return str(value)
+
+
+def _build_weather_source(weather: Dict[str, Any]) -> Dict[str, Any]:
+    resolved_location = weather.get("resolved_location") or {}
+    current = weather.get("current_weather") or {}
+    today = (weather.get("daily_forecast") or [{}])[0]
+    preview_bits = []
+
+    if current.get("weather_summary") and current.get("temperature_c") is not None:
+        preview_bits.append(
+            f"{current['weather_summary']}, {_format_value(current['temperature_c'], 'C')}"
+        )
+    sunrise = _format_timestamp(today.get("sunrise"))
+    sunset = _format_timestamp(today.get("sunset"))
+    if sunrise and sunset:
+        preview_bits.append(f"sunrise {sunrise}, sunset {sunset}")
+
+    return {
+        "title": f"Live Weather via MCP: {resolved_location.get('display_name', 'Resolved Location')}",
+        "chunk_id": "weather_live",
+        "score": 1.0,
+        "preview": " | ".join(preview_bits)[:160] or "Live weather lookup via local MCP server.",
+    }
+
+
+def _build_sun_times_source(sun_times: Dict[str, Any]) -> Dict[str, Any]:
+    resolved_location = sun_times.get("resolved_location") or {}
+    preview_bits = []
+
+    sunrise = _format_timestamp(sun_times.get("sunrise"))
+    sunset = _format_timestamp(sun_times.get("sunset"))
+    if sunrise:
+        preview_bits.append(f"sunrise {sunrise}")
+    if sunset:
+        preview_bits.append(f"sunset {sunset}")
+    if sun_times.get("date"):
+        preview_bits.append(str(sun_times["date"]))
+
+    return {
+        "title": f"Live Sun Times via MCP: {resolved_location.get('display_name', 'Resolved Location')}",
+        "chunk_id": "weather_sun_times_live",
+        "score": 1.0,
+        "preview": " | ".join(preview_bits)[:160] or "Live sunrise and sunset lookup via local MCP server.",
+    }
+
+
+def _resolve_tool_location_query(
+    tool_plan: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+) -> str:
+    if tool_plan.get("location_query"):
+        return str(tool_plan["location_query"]).strip()
+    if tool_plan.get("use_candidate_venue"):
+        return str(candidate_tournament.get("venue", "")).strip()
+    return ""
+
+
+def _resolve_tool_target_date(
+    tool_plan: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+) -> str:
+    if tool_plan.get("target_date"):
+        return str(tool_plan["target_date"]).strip()
+    if tool_plan.get("use_candidate_date"):
+        return _normalize_iso_date(str(candidate_tournament.get("date", "")).strip())
+    return ""
+
+
+def _offset_clock_time(value: str, offset_minutes: int) -> str:
+    base = datetime.strptime(value, "%H:%M")
+    shifted = base + timedelta(minutes=offset_minutes)
+    return shifted.strftime("%H:%M")
+
+
+def _build_tool_error_response(
+    message: str,
+    tournament: Dict[str, Any],
+    phase: str,
+) -> Dict[str, Any]:
+    return {
+        "message": message,
+        "tournament": tournament,
+        "ready_for_generation": False,
+        "needs_regeneration": phase == "refinement",
+        "sources": [],
+    }
+
+
+async def _execute_tool_plan(
+    tool_plan: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+    phase: str,
+) -> Dict[str, Any]:
+    if not tool_plan.get("requires_tool"):
+        return {
+            "used": False,
+            "candidate_tournament": candidate_tournament,
+            "tool_context": "No live-data MCP tool was used.",
+            "sources": [],
+        }
+
+    tool_name = str(tool_plan.get("tool_name", "none"))
+    tool_purpose = str(tool_plan.get("tool_purpose", "none"))
+
+    try:
+        if tool_name == "get_weather_forecast_by_coordinates":
+            latitude = tool_plan.get("latitude")
+            longitude = tool_plan.get("longitude")
+            if latitude is None or longitude is None:
+                return {
+                    "direct_response": _build_tool_error_response(
+                        "I can look up live weather, but I need valid coordinates first.",
+                        candidate_tournament,
+                        phase,
+                    )
+                }
+
+            weather = await get_weather_forecast_by_coordinates_via_mcp(
+                latitude=float(latitude),
+                longitude=float(longitude),
+                forecast_days=int(tool_plan.get("forecast_days", 3) or 3),
+            )
+            tool_context = json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_purpose": tool_purpose,
+                    "resolved_location": weather.get("resolved_location"),
+                    "current_weather": weather.get("current_weather"),
+                    "daily_forecast": (weather.get("daily_forecast") or [])[:3],
+                },
+                indent=2,
+            )
+            return {
+                "used": True,
+                "candidate_tournament": candidate_tournament,
+                "tool_context": tool_context,
+                "sources": [_build_weather_source(weather)],
+            }
+
+        if tool_name == "get_weather_forecast":
+            location_query = _resolve_tool_location_query(tool_plan, candidate_tournament)
+            if not location_query:
+                return {
+                    "direct_response": _build_tool_error_response(
+                        "I can look up live weather, but I need a location first.",
+                        candidate_tournament,
+                        phase,
+                    )
+                }
+
+            weather = await get_weather_forecast_via_mcp(
+                location_query=location_query,
+                forecast_days=int(tool_plan.get("forecast_days", 3) or 3),
+            )
+            tool_context = json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_purpose": tool_purpose,
+                    "resolved_location": weather.get("resolved_location"),
+                    "current_weather": weather.get("current_weather"),
+                    "daily_forecast": (weather.get("daily_forecast") or [])[:3],
+                },
+                indent=2,
+            )
+            return {
+                "used": True,
+                "candidate_tournament": candidate_tournament,
+                "tool_context": tool_context,
+                "sources": [_build_weather_source(weather)],
+            }
+
+        if tool_name == "get_sun_times_for_location":
+            location_query = _resolve_tool_location_query(tool_plan, candidate_tournament)
+            target_date = _resolve_tool_target_date(tool_plan, candidate_tournament)
+            if not location_query or not target_date:
+                missing_bits = []
+                if not location_query:
+                    missing_bits.append("the venue or location")
+                if not target_date:
+                    missing_bits.append("the date")
+                missing_text = " and ".join(missing_bits)
+                return {
+                    "direct_response": _build_tool_error_response(
+                        f"I can use sunrise or sunset for that request, but I still need {missing_text}.",
+                        candidate_tournament,
+                        phase,
+                    )
+                }
+
+            sun_times = await get_sun_times_for_location_via_mcp(
+                location_query=location_query,
+                target_date=target_date,
+            )
+            updated_tournament = dict(candidate_tournament)
+            applied_value = ""
+            if tool_purpose == "set_tournament_time_from_sun_event":
+                sun_event = str(tool_plan.get("sun_event", "none"))
+                target_field = str(tool_plan.get("target_field", "")).strip() or "teeTimeStart"
+                base_value = str(sun_times.get(f"{sun_event}_hm", "")).strip()
+                if not base_value:
+                    return {
+                        "direct_response": _build_tool_error_response(
+                            f"I found the location, but I couldn't determine the {sun_event} time for that date.",
+                            candidate_tournament,
+                            phase,
+                        )
+                    }
+                applied_value = _offset_clock_time(
+                    base_value,
+                    int(tool_plan.get("offset_minutes", 0) or 0),
+                )
+                updated_tournament[target_field] = applied_value
+
+            tool_context = json.dumps(
+                {
+                    "tool_name": tool_name,
+                    "tool_purpose": tool_purpose,
+                    "resolved_location": sun_times.get("resolved_location"),
+                    "date": sun_times.get("date"),
+                    "sunrise": sun_times.get("sunrise"),
+                    "sunset": sun_times.get("sunset"),
+                    "sunrise_hm": sun_times.get("sunrise_hm"),
+                    "sunset_hm": sun_times.get("sunset_hm"),
+                    "target_field": tool_plan.get("target_field", ""),
+                    "offset_minutes": tool_plan.get("offset_minutes", 0),
+                    "applied_value": applied_value,
+                },
+                indent=2,
+            )
+            return {
+                "used": True,
+                "candidate_tournament": _normalize_tournament(updated_tournament),
+                "tool_context": tool_context,
+                "sources": [_build_sun_times_source(sun_times)],
+            }
+
+        return {
+            "direct_response": _build_tool_error_response(
+                "I identified a live-data request, but the requested tool is not supported yet.",
+                candidate_tournament,
+                phase,
+            )
+        }
+    except WeatherLocationResolutionError as exc:
+        if tool_purpose == "set_tournament_time_from_sun_event":
+            message = f"I couldn't resolve the venue for the sunrise or sunset lookup. {exc}"
+        else:
+            message = f"I couldn't resolve that location for live weather lookup. {exc}"
+        return {
+            "direct_response": _build_tool_error_response(
+                message,
+                candidate_tournament,
+                phase,
+            )
+        }
+    except WeatherMcpClientError as exc:
+        message = (
+            f"I couldn't reach the live weather service. {exc} "
+            f"Make sure the local MCP server is running at `{MCP_WEATHER_SERVER_URL}`."
+        )
+        return {
+            "direct_response": _build_tool_error_response(
+                message,
+                candidate_tournament,
+                phase,
+            )
+        }
 
 
 def _parse_date_for_comparison(value: str) -> Optional[date]:
@@ -740,17 +1228,7 @@ async def handle_chat(
     phase = "refinement" if phase == "refinement" else "planning"
     tournament = _normalize_tournament(tournament)
     analysis_failed = False
-
-    sun_time_update = await maybe_handle_tournament_sun_time_request(
-        user_message,
-        tournament,
-    )
-    if sun_time_update is not None:
-        return _build_direct_update_response(tournament, sun_time_update, phase)
-
-    weather_result = await maybe_handle_weather_query(user_message, tournament)
-    if weather_result is not None:
-        return weather_result
+    analysis_failure_error = ""
 
     retrieved_chunks: List[Any] = []
     retrieval_query = _build_retrieval_query(user_message, tournament)
@@ -786,10 +1264,11 @@ async def handle_chat(
     )
 
     try:
-        raw_analysis = await _call_json_step(
+        raw_analysis = await _call_structured_step(
             "workflow_analysis",
             WORKFLOW_ANALYZER_SYSTEM_PROMPT,
             analysis_prompt,
+            WorkflowAnalysisOutput,
             retrieval_query,
             retrieved_chunks,
             retrieval_error,
@@ -798,20 +1277,51 @@ async def handle_chat(
         analysis_result = _normalize_analysis_result(raw_analysis, tournament)
     except Exception as exc:
         analysis_failed = True
+        analysis_failure_error = str(exc)
         analysis_result = {
+            "response_mode": "planner_workflow",
             "workflow_action": "clarify",
             "reasoning_summary": "Analysis step failed because the model service was unavailable.",
             "clarifying_focus": "",
             "clarifying_question": "",
             "candidate_tournament": tournament,
             "user_requested_regeneration": False,
+            "tool_plan": _normalize_tool_plan({}),
         }
         _log_debug_block(
             "WORKFLOW ANALYSIS FALLBACK",
             {"error": str(exc), "analysis_result": analysis_result},
         )
 
-    validation_result = _build_validation_result(tournament, analysis_result, phase)
+    tool_result = await _execute_tool_plan(
+        analysis_result.get("tool_plan", {}),
+        analysis_result["candidate_tournament"],
+        phase,
+    )
+    if tool_result.get("direct_response") is not None:
+        return tool_result["direct_response"]
+
+    analysis_result["candidate_tournament"] = _normalize_tournament(
+        tool_result.get("candidate_tournament", analysis_result["candidate_tournament"])
+    )
+    live_data_context = str(tool_result.get("tool_context", "No live-data MCP tool was used."))
+    live_data_sources = list(tool_result.get("sources") or [])
+
+    if analysis_result["response_mode"] == "live_data_reply":
+        validation_result = {
+            "required_status": {},
+            "missing_fields": [],
+            "constraint_issues": [],
+            "changed_impact_fields": [],
+            "final_action": "respond",
+            "primary_focus": "",
+            "suggested_question": "",
+            "ready_for_generation": False,
+            "needs_regeneration": False,
+        }
+    else:
+        validation_result = _build_validation_result(tournament, analysis_result, phase)
+
     _log_debug_block(
         "WORKFLOW VALIDATION",
         {
@@ -823,10 +1333,11 @@ async def handle_chat(
 
     finalizer_prompt = (
         f"Phase: {phase}\n"
+        f"Response mode: {analysis_result['response_mode']}\n"
         f"Today's date: {today_str}\n"
         f"Final action: {validation_result['final_action']}\n"
-        f"Target readyForGeneration: {str(validation_result['ready_for_generation']).lower()}\n"
-        f"Target needsRegeneration: {str(validation_result['needs_regeneration']).lower()}\n\n"
+        f"Target ready_for_generation: {str(validation_result['ready_for_generation']).lower()}\n"
+        f"Target needs_regeneration: {str(validation_result['needs_regeneration']).lower()}\n\n"
         f"[Phase instructions]\n{phase_instructions}\n\n"
         f"{history_block}"
         f"[Latest user message]\n{user_message}\n\n"
@@ -835,25 +1346,33 @@ async def handle_chat(
         f"{json.dumps(analysis_result['candidate_tournament'], indent=2)}\n\n"
         f"[Workflow analysis]\n{json.dumps(analysis_result, indent=2)}\n\n"
         f"[Validation summary]\n{json.dumps(validation_result, indent=2)}\n\n"
+        f"[Live data tool result]\n{live_data_context}\n\n"
         f"[Retrieved knowledge snippets]\n{retrieved_context}\n"
     )
 
     if analysis_failed:
         final_tournament = analysis_result["candidate_tournament"]
+        if "LangChain dependencies are not installed" in analysis_failure_error:
+            final_message = (
+                "The backend LangChain dependencies are not installed. "
+                "Run `pip install -r backend/requirements.txt` and restart the backend."
+            )
+        else:
+            final_message = "I'm having trouble reaching the planning model right now. Please try again in a moment."
         _log_debug_block(
             "WORKFLOW FINALIZER SKIPPED",
             {
                 "reason": "analysis_step_failed",
-                "message": "I'm having trouble reaching the planning model right now. Please try again in a moment.",
+                "message": final_message,
             },
         )
-        final_message = "I'm having trouble reaching the planning model right now. Please try again in a moment."
     else:
         try:
-            raw_final = await _call_json_step(
+            raw_final = await _call_structured_step(
                 "workflow_finalizer",
                 WORKFLOW_FINALIZER_SYSTEM_PROMPT,
                 finalizer_prompt,
+                WorkflowFinalizerOutput,
                 retrieval_query,
                 retrieved_chunks,
                 retrieval_error,
@@ -863,6 +1382,8 @@ async def handle_chat(
                 "tournament",
                 analysis_result["candidate_tournament"],
             )
+            if isinstance(final_tournament_raw, BaseModel):
+                final_tournament_raw = final_tournament_raw.model_dump()
             if not isinstance(final_tournament_raw, dict):
                 final_tournament_raw = analysis_result["candidate_tournament"]
 
@@ -878,12 +1399,20 @@ async def handle_chat(
 
     if validation_result["final_action"] == "clarify" and not final_message:
         final_message = validation_result["suggested_question"]
-    if validation_result["final_action"] == "clarify" and phase == "planning":
+    if (
+        analysis_result["response_mode"] != "live_data_reply"
+        and validation_result["final_action"] == "clarify"
+        and phase == "planning"
+    ):
         ready_for_generation = False
     else:
         ready_for_generation = validation_result["ready_for_generation"]
 
-    if phase == "planning" and ready_for_generation:
+    if (
+        analysis_result["response_mode"] != "live_data_reply"
+        and phase == "planning"
+        and ready_for_generation
+    ):
         final_message = READY_MESSAGE
 
     if not final_message:
@@ -894,5 +1423,5 @@ async def handle_chat(
         "tournament": final_tournament,
         "ready_for_generation": ready_for_generation,
         "needs_regeneration": validation_result["needs_regeneration"],
-        "sources": _serialize_sources(retrieved_chunks),
+        "sources": live_data_sources + _serialize_sources(retrieved_chunks),
     }
