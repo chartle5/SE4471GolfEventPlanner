@@ -1,4 +1,6 @@
+import asyncio
 import json
+import os
 from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
@@ -8,8 +10,14 @@ from app.services.rag import (
     format_retrieved_context,
     retrieve_relevant_chunks,
 )
+from app.services.weather_chat import (
+    maybe_handle_tournament_sun_time_request,
+    maybe_handle_weather_query,
+)
 
 DEPLOYMENT = CHAT_DEPLOYMENT
+RAG_RETRIEVAL_TIMEOUT_SECONDS = float(os.getenv("RAG_RETRIEVAL_TIMEOUT_SECONDS", "8"))
+LLM_REQUEST_TIMEOUT_SECONDS = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "20"))
 READY_MESSAGE = (
     "Great — I have all the information I need. Click the green button on the "
     "right to start generating your documents."
@@ -432,10 +440,13 @@ async def _call_json_step(
         extra_debug,
     )
 
-    response = await client.chat.completions.create(
-        model=DEPLOYMENT,
-        temperature=0.2,
-        messages=messages,
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=DEPLOYMENT,
+            temperature=0.2,
+            messages=messages,
+        ),
+        timeout=LLM_REQUEST_TIMEOUT_SECONDS,
     )
     content = _strip_code_fences(response.choices[0].message.content or "")
     parsed = json.loads(content)
@@ -685,6 +696,41 @@ def _build_validation_result(
     }
 
 
+def _build_direct_update_response(
+    original_tournament: Dict[str, Any],
+    custom_result: Dict[str, Any],
+    phase: str,
+) -> Dict[str, Any]:
+    analysis_result = {
+        "workflow_action": str(custom_result.get("workflow_action", "update")).strip().lower()
+        or "update",
+        "reasoning_summary": "",
+        "clarifying_focus": "",
+        "clarifying_question": "",
+        "candidate_tournament": _normalize_tournament(
+            custom_result.get("candidate_tournament", original_tournament)
+        ),
+        "user_requested_regeneration": False,
+    }
+    validation_result = _build_validation_result(original_tournament, analysis_result, phase)
+
+    message = str(custom_result.get("message", "")).strip()
+    if phase == "planning" and validation_result["ready_for_generation"]:
+        message = READY_MESSAGE
+    elif custom_result.get("append_follow_up_question") and validation_result["final_action"] == "clarify":
+        follow_up = validation_result["suggested_question"].strip()
+        if follow_up:
+            message = f"{message} {follow_up}".strip()
+
+    return {
+        "message": message,
+        "tournament": analysis_result["candidate_tournament"],
+        "ready_for_generation": validation_result["ready_for_generation"],
+        "needs_regeneration": validation_result["needs_regeneration"],
+        "sources": list(custom_result.get("sources") or []),
+    }
+
+
 async def handle_chat(
     user_message: str,
     tournament: Dict[str, Any],
@@ -693,12 +739,33 @@ async def handle_chat(
 ) -> Dict[str, Any]:
     phase = "refinement" if phase == "refinement" else "planning"
     tournament = _normalize_tournament(tournament)
+    analysis_failed = False
+
+    sun_time_update = await maybe_handle_tournament_sun_time_request(
+        user_message,
+        tournament,
+    )
+    if sun_time_update is not None:
+        return _build_direct_update_response(tournament, sun_time_update, phase)
+
+    weather_result = await maybe_handle_weather_query(user_message, tournament)
+    if weather_result is not None:
+        return weather_result
+
     retrieved_chunks: List[Any] = []
     retrieval_query = _build_retrieval_query(user_message, tournament)
     retrieval_error = None
 
     try:
-        retrieved_chunks = await retrieve_relevant_chunks(retrieval_query)
+        retrieved_chunks = await asyncio.wait_for(
+            retrieve_relevant_chunks(retrieval_query),
+            timeout=RAG_RETRIEVAL_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        retrieval_error = (
+            "RAG retrieval timed out before the local embedding model became ready."
+        )
+        retrieved_chunks = []
     except Exception as exc:
         retrieval_error = str(exc)
         retrieved_chunks = []
@@ -730,11 +797,12 @@ async def handle_chat(
         )
         analysis_result = _normalize_analysis_result(raw_analysis, tournament)
     except Exception as exc:
+        analysis_failed = True
         analysis_result = {
             "workflow_action": "clarify",
-            "reasoning_summary": "Analysis step failed, so the request needs clarification.",
+            "reasoning_summary": "Analysis step failed because the model service was unavailable.",
             "clarifying_focus": "",
-            "clarifying_question": "Could you restate the change you want me to make?",
+            "clarifying_question": "",
             "candidate_tournament": tournament,
             "user_requested_regeneration": False,
         }
@@ -770,32 +838,43 @@ async def handle_chat(
         f"[Retrieved knowledge snippets]\n{retrieved_context}\n"
     )
 
-    try:
-        raw_final = await _call_json_step(
-            "workflow_finalizer",
-            WORKFLOW_FINALIZER_SYSTEM_PROMPT,
-            finalizer_prompt,
-            retrieval_query,
-            retrieved_chunks,
-            retrieval_error,
-            extra_debug={"phase": phase, "validation": validation_result},
-        )
-        final_tournament_raw = raw_final.get(
-            "tournament",
-            analysis_result["candidate_tournament"],
-        )
-        if not isinstance(final_tournament_raw, dict):
-            final_tournament_raw = analysis_result["candidate_tournament"]
-
-        final_tournament = _normalize_tournament(final_tournament_raw)
-        final_message = str(raw_final.get("message", "")).strip()
-    except Exception as exc:
+    if analysis_failed:
         final_tournament = analysis_result["candidate_tournament"]
-        final_message = validation_result["suggested_question"]
         _log_debug_block(
-            "WORKFLOW FINALIZER FALLBACK",
-            {"error": str(exc), "message": final_message},
+            "WORKFLOW FINALIZER SKIPPED",
+            {
+                "reason": "analysis_step_failed",
+                "message": "I'm having trouble reaching the planning model right now. Please try again in a moment.",
+            },
         )
+        final_message = "I'm having trouble reaching the planning model right now. Please try again in a moment."
+    else:
+        try:
+            raw_final = await _call_json_step(
+                "workflow_finalizer",
+                WORKFLOW_FINALIZER_SYSTEM_PROMPT,
+                finalizer_prompt,
+                retrieval_query,
+                retrieved_chunks,
+                retrieval_error,
+                extra_debug={"phase": phase, "validation": validation_result},
+            )
+            final_tournament_raw = raw_final.get(
+                "tournament",
+                analysis_result["candidate_tournament"],
+            )
+            if not isinstance(final_tournament_raw, dict):
+                final_tournament_raw = analysis_result["candidate_tournament"]
+
+            final_tournament = _normalize_tournament(final_tournament_raw)
+            final_message = str(raw_final.get("message", "")).strip()
+        except Exception as exc:
+            final_tournament = analysis_result["candidate_tournament"]
+            final_message = validation_result["suggested_question"]
+            _log_debug_block(
+                "WORKFLOW FINALIZER FALLBACK",
+                {"error": str(exc), "message": final_message},
+            )
 
     if validation_result["final_action"] == "clarify" and not final_message:
         final_message = validation_result["suggested_question"]

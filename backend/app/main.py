@@ -13,8 +13,7 @@ from app.routes.register import router as register_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Connect to MongoDB on startup and close the connection on shutdown."""
-    await database.connect_to_mongo()
+    """Do not block app startup on database connectivity."""
     yield
     await database.close_mongo_connection()
 

@@ -5,26 +5,50 @@ const AuthContext = createContext(null)
 const TOKEN_KEY = 'golfplanner_token'
 const USER_KEY = 'golfplanner_user'
 
+function safeStorageGet(key) {
+  try {
+    return window.localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function safeStorageSet(key, value) {
+  try {
+    window.localStorage.setItem(key, value)
+  } catch {
+    // Ignore storage write failures so the app can still render and function in-memory.
+  }
+}
+
+function safeStorageRemove(key) {
+  try {
+    window.localStorage.removeItem(key)
+  } catch {
+    // Ignore storage removal failures.
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || null)
+  const [token, setToken] = useState(() => safeStorageGet(TOKEN_KEY) || null)
   const [user, setUser] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem(USER_KEY) || 'null')
+      return JSON.parse(safeStorageGet(USER_KEY) || 'null')
     } catch {
       return null
     }
   })
 
   const login = useCallback((tokenValue, userData) => {
-    localStorage.setItem(TOKEN_KEY, tokenValue)
-    localStorage.setItem(USER_KEY, JSON.stringify(userData))
+    safeStorageSet(TOKEN_KEY, tokenValue)
+    safeStorageSet(USER_KEY, JSON.stringify(userData))
     setToken(tokenValue)
     setUser(userData)
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem(TOKEN_KEY)
-    localStorage.removeItem(USER_KEY)
+    safeStorageRemove(TOKEN_KEY)
+    safeStorageRemove(USER_KEY)
     setToken(null)
     setUser(null)
   }, [])

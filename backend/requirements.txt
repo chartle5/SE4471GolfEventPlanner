@@ -11,4 +11,6 @@ sendgrid
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
+httpx
+mcp[cli]
 fpdf2

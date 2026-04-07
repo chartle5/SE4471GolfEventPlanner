@@ -2,10 +2,12 @@ import asyncio
 import math
 import os
 from dataclasses import dataclass
-from typing import Any, List, Sequence
+from typing import TYPE_CHECKING, Any, List, Sequence
 
 from app.data.knowledge_documents import KNOWLEDGE_DOCUMENTS
-from sentence_transformers import SentenceTransformer
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 DEFAULT_CHUNK_WORD_SIZE = int(os.getenv("RAG_CHUNK_WORD_SIZE", "120"))
 DEFAULT_CHUNK_WORD_OVERLAP = int(os.getenv("RAG_CHUNK_WORD_OVERLAP", "30"))
@@ -100,16 +102,18 @@ def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     return numerator / (math.sqrt(left_norm) * math.sqrt(right_norm))
 
 
-def _load_model() -> SentenceTransformer:
+def _load_model() -> "SentenceTransformer":
     global _EMBEDDING_MODEL
 
     if _EMBEDDING_MODEL is None:
+        from sentence_transformers import SentenceTransformer
+
         _EMBEDDING_MODEL = SentenceTransformer(LOCAL_EMBEDDING_MODEL)
 
     return _EMBEDDING_MODEL
 
 
-async def _get_model() -> SentenceTransformer:
+async def _get_model() -> "SentenceTransformer":
     if _EMBEDDING_MODEL is not None:
         return _EMBEDDING_MODEL
 
