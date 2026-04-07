@@ -38,6 +38,8 @@ async def get_registration_info(token: str, db: DB):
         "date": doc["date"],
         "venue": doc["venue"],
         "format": doc["format"],
+        "event_type": doc.get("event_type", "individual"),
+        "team_size": doc.get("team_size", 1),
         "slots_remaining": slots_remaining,
         "total_slots": doc["player_count"],
         "players_registered": registered,
@@ -62,11 +64,40 @@ async def register_player(token: str, payload: RegisterRequest, db: DB):
             message="Registration is closed — this tournament has been finalized.",
         )
 
+    event_type = doc.get("event_type", "individual")
+    team_size = int(doc.get("team_size") or 1)
+
+    # Team name is required for team events
+    if event_type == "team" and not (payload.team_name and payload.team_name.strip()):
+        return RegisterResponse(
+            success=False,
+            message="Team name is required for team events.",
+        )
+
+    # Enforce team size cap
+    if event_type == "team" and payload.team_name:
+        team_count = await crud.count_team_registrations(
+            db, doc["tournament_id"], payload.team_name
+        )
+        if team_count >= team_size:
+            return RegisterResponse(
+                success=False,
+                message=(
+                    f"Team '{payload.team_name.strip()}' is full "
+                    f"({team_size} player{'s' if team_size != 1 else ''} max)."
+                ),
+            )
+
     result = await crud.register_player(
         db,
         doc["tournament_id"],
         payload.first_name,
         payload.last_name,
+        phone_number=payload.phone_number,
+        rental_clubs=payload.rental_clubs,
+        club_hand=payload.club_hand,
+        team_name=payload.team_name,
+        event_type=event_type,
     )
 
     if result is None:

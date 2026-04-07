@@ -6,7 +6,7 @@ All routes are prefixed with /tournaments.
 import os
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 
 from app import crud
 from app.database import get_database
@@ -16,6 +16,8 @@ from app.models import (
     SaveTournamentResponse,
     SendBrochureRequest,
     SendBrochureResponse,
+    SendClubSheetRequest,
+    SendClubSheetResponse,
     ShuffleResponse,
 )
 
@@ -71,6 +73,109 @@ async def get_schedule(tournament_id: str, db: DB):
     }
 
 
+# ─────────────────────────── registrations ───────────────────────────────
+
+
+@router.get("/{tournament_id}/registrations")
+async def get_registrations(tournament_id: str, db: DB, current_user: CurrentUser):
+    """
+    Return all registered players for a tournament, including all form fields
+    supplied at registration time (phone, rental clubs, team name, tee slot).
+    Scoped to the logged-in organizer.
+    """
+    doc = await crud.get_tournament(db, tournament_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    registrations = await crud.get_registrations(db, tournament_id)
+    return {
+        "tournament_id": tournament_id,
+        "event_type": doc.get("event_type", "individual"),
+        "registrations": registrations,
+    }
+
+
+@router.post("/{tournament_id}/send-club-sheet", response_model=SendClubSheetResponse)
+async def send_club_sheet(
+    tournament_id: str,
+    payload: SendClubSheetRequest,
+    db: DB,
+    current_user: CurrentUser,
+):
+    """
+    Build and email a full operations sheet to golf club staff.
+    Includes: event overview, headcount, cart estimate, rental club breakdown,
+    confirmed tee pairings, and organizer contact info.
+    """
+    from app.services.document_generator import generate_club_ops_html
+    from app.services.email_service import send_email_direct
+
+    doc = await crud.get_tournament(db, tournament_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    registrations = await crud.get_registrations(db, tournament_id)
+    players_registered = await crud.count_registrations(db, tournament_id)
+
+    name = doc.get("name", "Golf Tournament")
+    date = doc.get("date", "TBD")
+
+    html_body = generate_club_ops_html(
+        doc=doc,
+        registrations=registrations,
+        players_registered=players_registered,
+        organizer_name=payload.organizer_name or "",
+        organizer_email=payload.organizer_email or "",
+        organizer_phone=payload.organizer_phone or "",
+    )
+
+    plain_text = (
+        f"Golf Club Operations Sheet — {name} ({date})\n\n"
+        f"Players Registered: {players_registered} / {doc.get('player_count', '?')}\n"
+        f"Please view the HTML version for full pairings and equipment breakdown."
+    )
+
+    await send_email_direct(
+        to_emails=payload.emails,
+        subject=f"Operations Sheet — {name} ({date})",
+        body=plain_text,
+        html_body=html_body,
+    )
+
+    n = len(payload.emails)
+    return SendClubSheetResponse(
+        success=True,
+        message=f"Club operations sheet sent to {n} recipient(s).",
+    )
+
+
+@router.get("/{tournament_id}/cart-placards")
+async def get_cart_placards(tournament_id: str, db: DB, current_user: CurrentUser):
+    """
+    Generate and return a print-ready PDF of cart placards.
+    One A5-landscape page per cart (2 players each).
+    Partners are kept together for team-of-2 events; all other event types
+    use sequential pairing within each schedule group.
+    """
+    from app.services.document_generator import generate_cart_placards_pdf
+
+    doc = await crud.get_tournament(db, tournament_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    registrations = await crud.get_registrations(db, tournament_id)
+    pdf_bytes = generate_cart_placards_pdf(doc=doc, registrations=registrations)
+
+    safe_name = doc.get("name", "tournament").replace(" ", "-").lower()
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="cart-placards-{safe_name}.pdf"'
+        },
+    )
+
+
 # ─────────────────────────── shuffle ─────────────────────────────────────
 
 
@@ -116,6 +221,10 @@ async def send_brochure(
     registration_link = f"{frontend_base}/register/{doc['registration_token']}"
 
     from app.services.email_service import send_brochure_email  # local import avoids circular
+    from app.services.document_generator import generate_rule_sheet as _gen_rule_sheet
+
+    rule_sheet = _gen_rule_sheet(doc.get("original_tournament") or doc)
+    rule_sheet_html = rule_sheet.get("html") if rule_sheet else None
 
     try:
         await send_brochure_email(
@@ -127,6 +236,7 @@ async def send_brochure(
             schedule=doc.get("schedule", []),
             tournament_date=doc.get("date", ""),
             tournament_venue=doc.get("venue", ""),
+            rule_sheet_html=rule_sheet_html,
         )
     except Exception as exc:
         raise HTTPException(

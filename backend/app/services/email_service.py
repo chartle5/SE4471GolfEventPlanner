@@ -87,6 +87,22 @@ def _build_schedule_attachment(
     )
 
 
+def _build_rule_sheet_attachment(
+    html: str,
+    tournament_name: str,
+) -> Optional[Attachment]:
+    """Encode a rule-sheet HTML string as a SendGrid Attachment."""
+    if not html:
+        return None
+    encoded = base64.b64encode(html.encode("utf-8")).decode()
+    return Attachment(
+        FileContent(encoded),
+        FileName("player-guide.html"),
+        FileType("text/html"),
+        Disposition("attachment"),
+    )
+
+
 def _send_messages(messages: List[Mail]) -> None:
     """Synchronous helper — runs inside asyncio.to_thread."""
     sg = SendGridAPIClient(api_key=_SENDGRID_API_KEY)
@@ -103,11 +119,12 @@ async def send_brochure_email(
     schedule: List[dict] = None,
     tournament_date: str = "",
     tournament_venue: str = "",
+    rule_sheet_html: Optional[str] = None,
 ) -> None:
     """
     Send the tournament brochure to a list of recipients.
-    Appends a prominent registration block and attaches the tee-time
-    schedule as an HTML file.
+    Appends a prominent registration block, attaches the tee-time
+    schedule as an HTML file, and optionally attaches the player guide.
     """
     registration_block = (
         "\n\n"
@@ -123,6 +140,7 @@ async def send_brochure_email(
     attachment = _build_schedule_attachment(
         schedule or [], tournament_name, tournament_date, tournament_venue
     )
+    rule_sheet_attachment = _build_rule_sheet_attachment(rule_sheet_html or "", tournament_name)
 
     messages = []
     for recipient in to_emails:
@@ -134,6 +152,8 @@ async def send_brochure_email(
         )
         if attachment:
             mail.attachment = attachment
+        if rule_sheet_attachment:
+            mail.attachment = rule_sheet_attachment
         messages.append(mail)
 
     await asyncio.to_thread(_send_messages, messages)

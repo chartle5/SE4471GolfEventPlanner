@@ -15,6 +15,35 @@ export default function Reservations() {
   const [sending, setSending]           = useState(false)
   const [sendResult, setSendResult]     = useState(null)  // { ok, message } | null
 
+  // registrants modal
+  const [registrantsRes, setRegistrantsRes]       = useState(null)
+  const [registrantsData, setRegistrantsData]     = useState(null)
+  const [registrantsLoading, setRegistrantsLoading] = useState(false)
+
+  // cart placards download
+  const [placardLoading, setPlacardLoading]       = useState(null)  // tournament_id | null
+
+  // club sheet modal
+  const [clubSheetRes, setClubSheetRes]           = useState(null)
+  const [clubSheetEmails, setClubSheetEmails]     = useState('')
+  const [clubOrgName, setClubOrgName]             = useState('')
+  const [clubOrgEmail, setClubOrgEmail]           = useState('')
+  const [clubOrgPhone, setClubOrgPhone]           = useState('')
+  const [clubSheetSending, setClubSheetSending]   = useState(false)
+  const [clubSheetResult, setClubSheetResult]     = useState(null)
+
+  // rule sheet modal
+  const [ruleSheetRes, setRuleSheetRes]           = useState(null)
+  const [ruleSheetEmails, setRuleSheetEmails]     = useState('')
+  const [ruleSheetSending, setRuleSheetSending]   = useState(false)
+  const [ruleSheetResult, setRuleSheetResult]     = useState(null)
+
+  // F&B summary modal
+  const [fnbRes, setFnbRes]                       = useState(null)
+  const [fnbEmails, setFnbEmails]                 = useState('')
+  const [fnbSending, setFnbSending]               = useState(false)
+  const [fnbResult, setFnbResult]                 = useState(null)
+
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
@@ -73,11 +102,94 @@ export default function Reservations() {
     setSendResult(null)
   }
 
+  async function openRegistrantsModal(res) {
+    setRegistrantsRes(res)
+    setRegistrantsData(null)
+    setRegistrantsLoading(true)
+    try {
+      const r = await fetch(
+        `http://localhost:8000/tournaments/${res.tournament_id}/registrations`,
+        { headers: authHeaders() }
+      )
+      if (r.ok) {
+        setRegistrantsData(await r.json())
+      } else {
+        setRegistrantsData({ error: 'Failed to load registrations.' })
+      }
+    } catch {
+      setRegistrantsData({ error: 'Could not reach the server.' })
+    } finally {
+      setRegistrantsLoading(false)
+    }
+  }
+
   function closeModal() {
     if (sending) return
     setModalRes(null)
     setModalType(null)
     setSendResult(null)
+  }
+
+  async function handleDownloadPlacards(res) {
+    if (placardLoading) return
+    setPlacardLoading(res.tournament_id)
+    try {
+      const response = await fetch(
+        `http://localhost:8000/tournaments/${res.tournament_id}/cart-placards`,
+        { headers: authHeaders() }
+      )
+      if (!response.ok) {
+        alert('Failed to generate cart placards. Is the backend running?')
+        return
+      }
+      const blob = await response.blob()
+      const url  = URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      const safeName = (res.tournament?.name || 'tournament').replace(/\s+/g, '-').toLowerCase()
+      a.href     = url
+      a.download = `cart-placards-${safeName}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Could not reach the server. Is the backend running?')
+    } finally {
+      setPlacardLoading(null)
+    }
+  }
+
+  async function handleSendClubSheet() {
+    if (!clubSheetRes) return
+    const emails = parseEmails(clubSheetEmails)
+    if (emails.length === 0) {
+      setClubSheetResult({ ok: false, message: 'Please enter at least one email address.' })
+      return
+    }
+    setClubSheetSending(true)
+    setClubSheetResult(null)
+    try {
+      const res = await fetch(
+        `http://localhost:8000/tournaments/${clubSheetRes.tournament_id}/send-club-sheet`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...authHeaders() },
+          body: JSON.stringify({
+            emails,
+            organizer_name: clubOrgName,
+            organizer_email: clubOrgEmail,
+            organizer_phone: clubOrgPhone,
+          }),
+        }
+      )
+      const data = await res.json()
+      setClubSheetResult({ ok: data.success, message: data.message })
+      if (data.success) setTimeout(() => setClubSheetRes(null), 2000)
+    } catch {
+      setClubSheetResult({ ok: false, message: 'Could not reach the server. Is the backend running?' })
+    } finally {
+      setClubSheetSending(false)
+    }
   }
 
   function parseEmails(input) {
@@ -278,6 +390,50 @@ export default function Reservations() {
                 >
                   Send Schedule
                 </button>
+                <button
+                  onClick={() => openRegistrantsModal(res)}
+                  disabled={!res.tournament_id}
+                  style={{ ...outlineBtnStyle, borderColor: '#7c3aed', color: '#7c3aed' }}
+                >
+                  View Registrants
+                </button>
+                <button
+                  onClick={() => handleDownloadPlacards(res)}
+                  disabled={!res.tournament_id || placardLoading === res.tournament_id}
+                  style={{ ...outlineBtnStyle, borderColor: '#0369a1', color: '#0369a1' }}
+                >
+                  {placardLoading === res.tournament_id ? 'Generating…' : 'Cart Placards'}
+                </button>
+                <button
+                  onClick={() => {
+                    setClubSheetRes(res)
+                    setClubSheetEmails('')
+                    setClubOrgName('')
+                    setClubOrgEmail('')
+                    setClubOrgPhone('')
+                    setClubSheetResult(null)
+                  }}
+                  disabled={!res.tournament_id}
+                  style={{ ...outlineBtnStyle, borderColor: '#d97706', color: '#d97706' }}
+                >
+                  Send Club Sheet
+                </button>
+                <button
+                  onClick={() => { setRuleSheetRes(res); setRuleSheetEmails(''); setRuleSheetResult(null) }}
+                  disabled={!res.tournament_id}
+                  style={{ ...outlineBtnStyle, borderColor: '#0891b2', color: '#0891b2' }}
+                >
+                  Send Rule Sheet
+                </button>
+                {res.tournament?.cateringEnabled && (
+                  <button
+                    onClick={() => { setFnbRes(res); setFnbEmails(''); setFnbResult(null) }}
+                    disabled={!res.tournament_id}
+                    style={{ ...outlineBtnStyle, borderColor: '#b45309', color: '#b45309' }}
+                  >
+                    F&amp;B Summary
+                  </button>
+                )}
                 <button
                   onClick={() => handleDelete(res.id)}
                   style={{ ...outlineBtnStyle, borderColor: '#dc2626', color: '#dc2626' }}
@@ -505,6 +661,401 @@ export default function Reservations() {
           </div>
         </div>
       )}
+
+      {/* ── Registrants Modal ── */}
+      {registrantsRes && (
+        <div
+          onClick={() => setRegistrantsRes(null)}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              width: '100%',
+              maxWidth: 820,
+              maxHeight: '80vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal header */}
+            <div style={{
+              background: '#7c3aed',
+              color: '#fff',
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexShrink: 0,
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Registered Players</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>
+                  {registrantsRes.tournament?.name || 'Tournament'}
+                </div>
+              </div>
+              <button
+                onClick={() => setRegistrantsRes(null)}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
+              {registrantsLoading && (
+                <p style={{ color: '#6b7280', textAlign: 'center' }}>Loading…</p>
+              )}
+              {registrantsData?.error && (
+                <p style={{ color: '#dc2626', textAlign: 'center' }}>{registrantsData.error}</p>
+              )}
+              {registrantsData && !registrantsData.error && (
+                registrantsData.registrations?.length === 0 ? (
+                  <p style={{ color: '#6b7280', textAlign: 'center', padding: '24px 0' }}>
+                    No players have registered yet.
+                  </p>
+                ) : (
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                    <thead>
+                      <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
+                        <th style={regThStyle}>#</th>
+                        <th style={regThStyle}>Name</th>
+                        <th style={regThStyle}>Phone</th>
+                        <th style={regThStyle}>Rental Clubs</th>
+                        {registrantsData.event_type === 'team' && <th style={regThStyle}>Team</th>}
+                        <th style={regThStyle}>Tee Slot</th>
+                        <th style={regThStyle}>Registered At</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {registrantsData.registrations.map((reg, i) => (
+                        <tr key={reg.registration_id || i} style={{ borderBottom: '1px solid #f3f4f6' }}>
+                          <td style={regTdStyle}>{i + 1}</td>
+                          <td style={{ ...regTdStyle, fontWeight: 600 }}>{reg.first_name} {reg.last_name}</td>
+                          <td style={regTdStyle}>{reg.phone_number || '—'}</td>
+                          <td style={regTdStyle}>
+                            {reg.rental_clubs
+                              ? `Yes — ${reg.club_hand === 'left' ? 'Left' : 'Right'} Handed`
+                              : 'No'}
+                          </td>
+                          {registrantsData.event_type === 'team' && (
+                            <td style={regTdStyle}>{reg.team_name || '—'}</td>
+                          )}
+                          <td style={regTdStyle}>{reg.slot_description || '—'}</td>
+                          <td style={regTdStyle}>
+                            {reg.registered_at
+                              ? new Date(reg.registered_at).toLocaleString()
+                              : '—'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setRegistrantsRes(null)}
+                style={outlineBtnStyle}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Club Sheet Modal ── */}
+      {clubSheetRes && (
+        <div
+          onClick={() => { if (!clubSheetSending) setClubSheetRes(null) }}
+          style={{
+            position: 'fixed', inset: 0,
+            background: 'rgba(0,0,0,0.45)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: 12,
+              width: '100%',
+              maxWidth: 520,
+              boxShadow: '0 20px 60px rgba(0,0,0,0.25)',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Header */}
+            <div style={{
+              background: '#d97706',
+              color: '#fff',
+              padding: '16px 20px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Club Operations Sheet</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>
+                  {clubSheetRes.tournament?.name || 'Tournament'}
+                </div>
+              </div>
+              <button
+                onClick={() => setClubSheetRes(null)}
+                disabled={clubSheetSending}
+                style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}
+              >✕</button>
+            </div>
+
+            {/* Description bar */}
+            <div style={{
+              background: '#fffbeb',
+              borderBottom: '1px solid #e5e7eb',
+              padding: '10px 20px',
+              fontSize: 12,
+              color: '#374151',
+            }}>
+              Sends the full operations sheet to golf club staff — headcount, carts, rental clubs,
+              confirmed tee pairings, and organizer contact.
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 5 }}>
+                  Club Email(s)
+                </label>
+                <textarea
+                  value={clubSheetEmails}
+                  onChange={(e) => setClubSheetEmails(e.target.value)}
+                  placeholder="e.g. proshop@pinevalley.com events@pinevalley.com"
+                  rows={3}
+                  disabled={clubSheetSending}
+                  style={{
+                    width: '100%', boxSizing: 'border-box',
+                    border: '1px solid #d1d5db', borderRadius: 8,
+                    padding: '9px 12px', fontSize: 13,
+                    fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827',
+                  }}
+                />
+                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>
+                  Separate multiple addresses with spaces, commas, or newlines.
+                </div>
+              </div>
+
+              <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#6b7280', marginBottom: 10 }}>
+                  Your Contact Info (shown at bottom of sheet)
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    ['Your Name', clubOrgName, setClubOrgName, 'e.g. Jane Smith'],
+                    ['Your Email', clubOrgEmail, setClubOrgEmail, 'e.g. jane@example.com'],
+                    ['Your Phone', clubOrgPhone, setClubOrgPhone, 'e.g. 555-867-5309'],
+                  ].map(([label, val, setter, ph]) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <label style={{ width: 90, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>{label}</label>
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={(e) => setter(e.target.value)}
+                        placeholder={ph}
+                        disabled={clubSheetSending}
+                        style={{
+                          flex: 1,
+                          border: '1px solid #d1d5db', borderRadius: 6,
+                          padding: '7px 10px', fontSize: 13,
+                          outline: 'none', color: '#111827',
+                        }}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Feedback */}
+              {clubSheetResult && (
+                <div style={{
+                  padding: '10px 14px', borderRadius: 8,
+                  fontSize: 13, fontWeight: 600,
+                  background: clubSheetResult.ok ? '#f0fdf4' : '#fef2f2',
+                  color: clubSheetResult.ok ? '#166534' : '#dc2626',
+                  border: `1px solid ${clubSheetResult.ok ? '#bbf7d0' : '#fecaca'}`,
+                }}>
+                  {clubSheetResult.message}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button
+                onClick={() => setClubSheetRes(null)}
+                disabled={clubSheetSending}
+                style={outlineBtnStyle}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSendClubSheet}
+                disabled={clubSheetSending}
+                style={{
+                  background: clubSheetSending ? '#fcd34d' : '#d97706',
+                  color: '#fff', border: 'none',
+                  padding: '7px 20px', borderRadius: 6,
+                  fontSize: 13, fontWeight: 600,
+                  cursor: clubSheetSending ? 'default' : 'pointer',
+                  transition: 'background 0.15s',
+                }}
+              >
+                {clubSheetSending ? 'Sending…' : 'Send Club Sheet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Rule Sheet Modal ── */}
+      {ruleSheetRes && (
+        <div
+          onClick={() => { if (!ruleSheetSending) setRuleSheetRes(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}
+          >
+            <div style={{ background: '#0891b2', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Player Information Guide</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{ruleSheetRes.tournament?.name || 'Tournament'}</div>
+              </div>
+              <button onClick={() => setRuleSheetRes(null)} disabled={ruleSheetSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ background: '#ecfeff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
+              Emails the full Player Information Guide — event details, format, conduct rules, and catering info.
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
+              <textarea
+                value={ruleSheetEmails}
+                onChange={(e) => setRuleSheetEmails(e.target.value)}
+                placeholder="e.g. alice@example.com bob@example.com"
+                rows={3}
+                disabled={ruleSheetSending}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
+              />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
+              {ruleSheetResult && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: ruleSheetResult.ok ? '#f0fdf4' : '#fef2f2', color: ruleSheetResult.ok ? '#166534' : '#dc2626', border: `1px solid ${ruleSheetResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
+                  {ruleSheetResult.message}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setRuleSheetRes(null)} disabled={ruleSheetSending} style={outlineBtnStyle}>Cancel</button>
+              <button
+                onClick={async () => {
+                  const emails = parseEmails(ruleSheetEmails)
+                  if (!emails.length) { setRuleSheetResult({ ok: false, message: 'Please enter at least one email address.' }); return }
+                  setRuleSheetSending(true); setRuleSheetResult(null)
+                  try {
+                    const r = await fetch('http://localhost:8000/email/send-rule-sheet', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ recipients: emails, tournament_meta: ruleSheetRes.tournament || {} })
+                    })
+                    const d = await r.json()
+                    setRuleSheetResult({ ok: d.success, message: d.message })
+                    if (d.success) setTimeout(() => setRuleSheetRes(null), 2000)
+                  } catch { setRuleSheetResult({ ok: false, message: 'Could not reach the server.' }) }
+                  finally { setRuleSheetSending(false) }
+                }}
+                disabled={ruleSheetSending}
+                style={{ background: ruleSheetSending ? '#67e8f9' : '#0891b2', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: ruleSheetSending ? 'default' : 'pointer' }}
+              >
+                {ruleSheetSending ? 'Sending…' : 'Send Guide'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── F&B Summary Modal ── */}
+      {fnbRes && (
+        <div
+          onClick={() => { if (!fnbSending) setFnbRes(null) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}
+          >
+            <div style={{ background: '#b45309', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Food &amp; Beverage Summary</div>
+                <div style={{ fontSize: 12, opacity: 0.85, marginTop: 2 }}>{fnbRes.tournament?.name || 'Tournament'}</div>
+              </div>
+              <button onClick={() => setFnbRes(null)} disabled={fnbSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+            </div>
+            <div style={{ background: '#fffbeb', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
+              Emails the Banquet Order Sheet to your caterer or venue contact — covers guest count, budget, style, and dietary requirements.
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
+              <textarea
+                value={fnbEmails}
+                onChange={(e) => setFnbEmails(e.target.value)}
+                placeholder="e.g. catering@venue.com"
+                rows={3}
+                disabled={fnbSending}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
+              />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
+              {fnbResult && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: fnbResult.ok ? '#f0fdf4' : '#fef2f2', color: fnbResult.ok ? '#166534' : '#dc2626', border: `1px solid ${fnbResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
+                  {fnbResult.message}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setFnbRes(null)} disabled={fnbSending} style={outlineBtnStyle}>Cancel</button>
+              <button
+                onClick={async () => {
+                  const emails = parseEmails(fnbEmails)
+                  if (!emails.length) { setFnbResult({ ok: false, message: 'Please enter at least one email address.' }); return }
+                  setFnbSending(true); setFnbResult(null)
+                  try {
+                    const r = await fetch('http://localhost:8000/email/send-fnb-summary', {
+                      method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ recipients: emails, tournament_meta: fnbRes.tournament || {} })
+                    })
+                    const d = await r.json()
+                    setFnbResult({ ok: d.success, message: d.message })
+                    if (d.success) setTimeout(() => setFnbRes(null), 2000)
+                  } catch { setFnbResult({ ok: false, message: 'Could not reach the server.' }) }
+                  finally { setFnbSending(false) }
+                }}
+                disabled={fnbSending}
+                style={{ background: fnbSending ? '#fcd34d' : '#b45309', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: fnbSending ? 'default' : 'pointer' }}
+              >
+                {fnbSending ? 'Sending…' : 'Send Summary'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -532,6 +1083,21 @@ const thStyle = {
 const tdStyle = {
   padding: '8px 12px',
   color: '#111827',
+  fontSize: 13,
+}
+
+const regThStyle = {
+  padding: '8px 12px',
+  textAlign: 'left',
+  fontWeight: 600,
+  fontSize: 12,
+  color: '#374151',
+}
+
+const regTdStyle = {
+  padding: '8px 12px',
+  color: '#111827',
+  verticalAlign: 'top',
   fontSize: 13,
 }
 

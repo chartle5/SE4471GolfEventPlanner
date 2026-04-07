@@ -188,17 +188,36 @@ async def get_registrations(
     return await cursor.to_list(length=None)
 
 
+async def count_team_registrations(
+    db: AsyncIOMotorDatabase,
+    tournament_id: str,
+    team_name: str,
+) -> int:
+    """Count registrations for a given team name (case-insensitive)."""
+    normalized = re.escape(team_name.strip())
+    return await db.registrations.count_documents({
+        "tournament_id": tournament_id,
+        "team_name": {"$regex": f"^{normalized}$", "$options": "i"},
+    })
+
+
 async def register_player(
     db: AsyncIOMotorDatabase,
     tournament_id: str,
     first_name: str,
     last_name: str,
+    phone_number: str = "",
+    rental_clubs: bool = False,
+    club_hand: Optional[str] = None,
+    team_name: Optional[str] = None,
+    event_type: str = "individual",
 ) -> Optional[Dict[str, Any]]:
     """
     Claim the next available placeholder slot in the schedule for a player.
 
-    Scans schedule groups in order and replaces the first string that matches
-    the placeholder pattern ("Player N") with the player's full name.
+    For team events, attempts to place all players with the same team_name
+    in the same tee-time group. Falls back to sequential placement if the
+    team's group has no remaining placeholders.
 
     Returns a dict with registration details, or None if the tournament is
     full / not found.
@@ -212,15 +231,48 @@ async def register_player(
     slot_description: Optional[str] = None
     found = False
 
-    for group in schedule:
-        for i, player in enumerate(group["players"]):
-            if _PLACEHOLDER_RE.match(player):
-                group["players"][i] = full_name
-                slot_description = f"Group {group['group']} @ {group['teeTime']}"
-                found = True
+    # ── Team grouping: try to place player in the same group as teammates ──
+    if event_type == "team" and team_name and team_name.strip():
+        normalized_team = team_name.strip()
+        teammate_cursor = db.registrations.find(
+            {
+                "tournament_id": tournament_id,
+                "team_name": {"$regex": f"^{re.escape(normalized_team)}$", "$options": "i"},
+            },
+            {"first_name": 1, "last_name": 1, "_id": 0},
+        )
+        teammates = await teammate_cursor.to_list(length=None)
+        if teammates:
+            teammate_names = {f"{t['first_name']} {t['last_name']}" for t in teammates}
+            # Find which group the team is currently in
+            team_group_num = None
+            for group in schedule:
+                if any(p in teammate_names for p in group["players"]):
+                    team_group_num = group["group"]
+                    break
+            # Try to claim a placeholder in that group
+            if team_group_num is not None:
+                for group in schedule:
+                    if group["group"] == team_group_num:
+                        for i, player in enumerate(group["players"]):
+                            if _PLACEHOLDER_RE.match(player):
+                                group["players"][i] = full_name
+                                slot_description = f"Group {group['group']} @ {group['teeTime']}"
+                                found = True
+                                break
+                        break
+
+    # ── Fallback / individual: next available placeholder ──
+    if not found:
+        for group in schedule:
+            for i, player in enumerate(group["players"]):
+                if _PLACEHOLDER_RE.match(player):
+                    group["players"][i] = full_name
+                    slot_description = f"Group {group['group']} @ {group['teeTime']}"
+                    found = True
+                    break
+            if found:
                 break
-        if found:
-            break
 
     if not found:
         return None  # All slots are taken
@@ -234,6 +286,11 @@ async def register_player(
         "tournament_id": tournament_id,
         "first_name": first_name,
         "last_name": last_name,
+        "phone_number": phone_number,
+        "rental_clubs": rental_clubs,
+        "club_hand": club_hand,
+        "team_name": team_name.strip() if team_name else None,
+        "slot_description": slot_description,
         "registered_at": datetime.now(timezone.utc),
     }
     await db.registrations.insert_one(reg_doc)
