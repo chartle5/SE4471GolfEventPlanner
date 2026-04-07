@@ -16,6 +16,11 @@ export const tournamentState = {
   sponsors: [],
   catering: '',
   budget: 0,
+  cateringEnabled: false,
+  cateringBudget: 0,
+  cateringStyle: '',
+  cateringServingTime: '',
+  cateringDietaryNotes: '',
   staffing: {
     volunteers: 0,
     staff: 0

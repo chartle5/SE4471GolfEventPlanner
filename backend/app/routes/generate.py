@@ -1,6 +1,16 @@
-from fastapi import APIRouter
-from app.models import GenerateRequest, GenerateResponse, SendEmailDirectRequest, SendEmailDirectResponse, SendInviteRequest, SendInviteResponse
-from app.services.document_generator import generate_schedule, generate_brochure, generate_invite_email, generate_brochure_html, generate_invite_html
+from fastapi import APIRouter, HTTPException
+from app.models import (
+    GenerateRequest, GenerateResponse,
+    SendEmailDirectRequest, SendEmailDirectResponse,
+    SendInviteRequest, SendInviteResponse,
+    SendRuleSheetRequest, SendRuleSheetResponse,
+    SendFnBSummaryRequest, SendFnBSummaryResponse,
+)
+from app.services.document_generator import (
+    generate_schedule, generate_brochure,
+    generate_invite_email, generate_brochure_html, generate_invite_html,
+    generate_rule_sheet, generate_fnb_summary,
+)
 from app.services.email_service import send_email_direct
 
 router = APIRouter()
@@ -8,9 +18,16 @@ router = APIRouter()
 
 @router.post("/generate", response_model=GenerateResponse)
 async def generate_endpoint(payload: GenerateRequest) -> GenerateResponse:
-    schedule = generate_schedule(payload.tournament)
-    brochure = generate_brochure(payload.tournament)
-    return GenerateResponse(schedule=schedule, brochure=brochure)
+    schedule    = generate_schedule(payload.tournament)
+    brochure    = generate_brochure(payload.tournament)
+    rule_sheet  = generate_rule_sheet(payload.tournament)
+    fnb_summary = generate_fnb_summary(payload.tournament)
+    return GenerateResponse(
+        schedule=schedule,
+        brochure=brochure,
+        rule_sheet=rule_sheet,
+        fnb_summary=fnb_summary,
+    )
 
 
 @router.post("/email/send", response_model=SendEmailDirectResponse)
@@ -73,4 +90,58 @@ async def send_invite_endpoint(payload: SendInviteRequest) -> SendInviteResponse
         )
     except Exception as exc:
         return SendInviteResponse(success=False, message=str(exc))
+
+
+@router.post("/email/send-rule-sheet", response_model=SendRuleSheetResponse)
+async def send_rule_sheet_endpoint(payload: SendRuleSheetRequest) -> SendRuleSheetResponse:
+    """
+    Generate and email the Player Information Guide / Rule Sheet.
+    """
+    try:
+        doc = generate_rule_sheet(payload.tournament_meta)
+        await send_email_direct(
+            to_emails=payload.recipients,
+            subject=doc["subject"],
+            body=doc["body"],
+            html_body=doc["html"],
+        )
+        count = len(payload.recipients)
+        return SendRuleSheetResponse(
+            success=True,
+            message=f"Player guide sent to {count} recipient{'s' if count != 1 else ''}.",
+        )
+    except Exception as exc:
+        return SendRuleSheetResponse(success=False, message=str(exc))
+
+
+@router.post("/email/send-fnb-summary", response_model=SendFnBSummaryResponse)
+async def send_fnb_summary_endpoint(payload: SendFnBSummaryRequest) -> SendFnBSummaryResponse:
+    """
+    Generate and email the Food & Beverage Summary / Banquet Order Sheet.
+    Returns 400 when catering is not enabled for the tournament.
+    """
+    if not payload.tournament_meta.get("cateringEnabled"):
+        raise HTTPException(
+            status_code=400,
+            detail="Catering is not enabled for this tournament.",
+        )
+    try:
+        doc = generate_fnb_summary(payload.tournament_meta)
+        if doc is None:
+            raise HTTPException(status_code=400, detail="Catering is not enabled for this tournament.")
+        await send_email_direct(
+            to_emails=payload.recipients,
+            subject=doc["subject"],
+            body=doc["body"],
+            html_body=doc["html"],
+        )
+        count = len(payload.recipients)
+        return SendFnBSummaryResponse(
+            success=True,
+            message=f"F&B summary sent to {count} recipient{'s' if count != 1 else ''}.",
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return SendFnBSummaryResponse(success=False, message=str(exc))
 

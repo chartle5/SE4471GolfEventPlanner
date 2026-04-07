@@ -18,6 +18,11 @@ const STATUS_ROWS = [
   { key: 'sponsors',             label: 'Sponsors',           required: false,                       fmt: v => Array.isArray(v) ? v.join(', ') || '—' : (v || '—') },
   { key: 'catering',             label: 'Catering',           required: false,                       fmt: v => v || '—' },
   { key: 'budget',               label: 'Budget',             required: false,                       fmt: v => v ? `$${v}` : '—' },
+  { key: 'cateringEnabled',      label: 'Catering Enabled',   required: false,                       fmt: v => v ? 'Yes' : 'No' },
+  { key: 'cateringBudget',       label: 'Catering Budget',    required: t => !!t.cateringEnabled,    fmt: v => v ? `$${v}` : '—' },
+  { key: 'cateringStyle',        label: 'Catering Style',     required: false,                       fmt: v => v || '—' },
+  { key: 'cateringServingTime',  label: 'Serving Time',       required: false,                       fmt: v => v || '—' },
+  { key: 'cateringDietaryNotes', label: 'Dietary Notes',      required: false,                       fmt: v => v || '—' },
   { key: 'accessibility',        label: 'Accessibility',      required: false,                       fmt: v => v || '—' },
   { key: 'notes',                label: 'Notes',              required: false,                       fmt: v => v || '—' },
 ]
@@ -133,6 +138,8 @@ export default function PlanTournament() {
       localStorage.setItem('golfDraftSchedule', JSON.stringify(data.schedule))
       localStorage.setItem('golfDraftBrochure', JSON.stringify(data.brochure))
       localStorage.setItem('golfDraftTournament', JSON.stringify(currentTournament))
+      localStorage.setItem('golfDraftRuleSheet', JSON.stringify(data.rule_sheet ?? null))
+      localStorage.setItem('golfDraftFnBSummary', JSON.stringify(data.fnb_summary ?? null))
       return data
     } catch {
       return null

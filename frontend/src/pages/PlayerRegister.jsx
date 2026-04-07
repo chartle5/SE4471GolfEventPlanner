@@ -9,6 +9,10 @@ export default function PlayerRegister() {
 
   const [firstName, setFirstName] = useState('')
   const [lastName, setLastName]   = useState('')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [rentalClubs, setRentalClubs] = useState(false)
+  const [clubHand, setClubHand] = useState('')
+  const [teamName, setTeamName] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState(null) // { ok, message, slot }
 
@@ -30,14 +34,24 @@ export default function PlayerRegister() {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!firstName.trim() || !lastName.trim()) return
+    const isTeam = info?.event_type === 'team'
+    if (!firstName.trim() || !lastName.trim() || !phoneNumber.trim()) return
+    if (isTeam && !teamName.trim()) return
+    if (rentalClubs && !clubHand) return
     setSubmitting(true)
     setResult(null)
     try {
       const res = await fetch(`http://localhost:8000/register/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ first_name: firstName.trim(), last_name: lastName.trim() }),
+        body: JSON.stringify({
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          phone_number: phoneNumber.trim(),
+          rental_clubs: rentalClubs,
+          club_hand: rentalClubs ? clubHand : null,
+          team_name: isTeam ? (teamName.trim() || null) : null,
+        }),
       })
       const data = await res.json()
       setResult({ ok: data.success, message: data.message, slot: data.slot_description })
@@ -146,7 +160,7 @@ export default function PlayerRegister() {
                     placeholder="e.g. Jane"
                   />
                 </div>
-                <div style={{ marginBottom: 18 }}>
+                <div style={{ marginBottom: 14 }}>
                   <label style={labelStyle}>Last Name</label>
                   <input
                     type="text"
@@ -158,6 +172,75 @@ export default function PlayerRegister() {
                     placeholder="e.g. Smith"
                   />
                 </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={labelStyle}>Phone Number</label>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    required
+                    disabled={submitting}
+                    style={inputStyle}
+                    placeholder="e.g. 555-123-4567"
+                  />
+                </div>
+
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={rentalClubs}
+                      onChange={(e) => { setRentalClubs(e.target.checked); if (!e.target.checked) setClubHand('') }}
+                      disabled={submitting}
+                    />
+                    Rental Clubs
+                  </label>
+                  {rentalClubs && (
+                    <div style={{ marginTop: 8, display: 'flex', gap: 24, paddingLeft: 4 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="clubHand"
+                          value="right"
+                          checked={clubHand === 'right'}
+                          onChange={() => setClubHand('right')}
+                          disabled={submitting}
+                        />
+                        Right Handed
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="clubHand"
+                          value="left"
+                          checked={clubHand === 'left'}
+                          onChange={() => setClubHand('left')}
+                          disabled={submitting}
+                        />
+                        Left Handed
+                      </label>
+                    </div>
+                  )}
+                </div>
+
+                {info?.event_type === 'team' && (
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={labelStyle}>Team Name</label>
+                    <input
+                      type="text"
+                      value={teamName}
+                      onChange={(e) => setTeamName(e.target.value)}
+                      required
+                      disabled={submitting}
+                      style={inputStyle}
+                      placeholder="e.g. Eagles"
+                    />
+                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                      Players with the same team name will be grouped together.
+                    </div>
+                  </div>
+                )}
 
                 {result && !result.ok && (
                   <div style={{
@@ -176,7 +259,14 @@ export default function PlayerRegister() {
 
                 <button
                   type="submit"
-                  disabled={submitting || !firstName.trim() || !lastName.trim()}
+                  disabled={
+                    submitting ||
+                    !firstName.trim() ||
+                    !lastName.trim() ||
+                    !phoneNumber.trim() ||
+                    (info?.event_type === 'team' && !teamName.trim()) ||
+                    (rentalClubs && !clubHand)
+                  }
                   style={{
                     width: '100%',
                     background: submitting ? '#86efac' : '#166534',

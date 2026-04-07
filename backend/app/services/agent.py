@@ -25,6 +25,11 @@ DOCUMENT_IMPACT_FIELDS = {
     "numberOfDays",
     "eventType",
     "teamSize",
+    "cateringEnabled",
+    "cateringBudget",
+    "cateringStyle",
+    "cateringServingTime",
+    "cateringDietaryNotes",
 }
 
 PLANNING_SYSTEM_PROMPT = """
@@ -52,6 +57,15 @@ REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   11. teeTimeInterval      — minutes between consecutive tee times (default 12, user can override)
 
 OPTIONAL but useful: entryFee, description, sponsors, catering, budget, staffing, accessibility, notes, constraints.
+
+CATERING WORKFLOW — Follow this sub-sequence when the user mentions catering or food:
+  1. Set cateringEnabled = true.
+  2. Ask for cateringBudget (REQUIRED once catering is enabled — a positive number in dollars).
+  3. Ask for cateringStyle (e.g. Buffet, Plated Meal, BBQ, Sandwich Station, Boxed Lunch).
+  4. Ask for cateringServingTime (e.g. post-round banquet, at the turn, before the round).
+  5. Optionally ask for cateringDietaryNotes (any known dietary requirements).
+IMPORTANT: cateringBudget is REQUIRED once cateringEnabled is true — do not mark the event ready
+           for generation while cateringEnabled is true and cateringBudget is still 0.
 
 Field rules:
 - teamSize for an individual event must be 1; set it automatically and do not ask.
@@ -113,6 +127,10 @@ Rules:
   set "workflowAction" to "clarify" and leave uncertain fields unchanged.
 - Use retrieved knowledge snippets only as guidance.
 - If eventType is "individual", set teamSize to 1 in the candidate object.
+- If the user mentions catering or food, set cateringEnabled to true and set
+  clarifyingFocus to "cateringBudget" if cateringBudget is still 0.
+- Always include cateringEnabled (boolean), cateringBudget (number), cateringStyle,
+  cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
 - Do not output markdown or extra text.
 """
 
@@ -158,6 +176,11 @@ EXAMPLE_EMPTY_TOURNAMENT = {
     "sponsors": [],
     "catering": "",
     "budget": 0,
+    "cateringEnabled": False,
+    "cateringBudget": 0,
+    "cateringStyle": "",
+    "cateringServingTime": "",
+    "cateringDietaryNotes": "",
     "staffing": {
         "volunteers": 0,
         "staff": 0,
@@ -253,9 +276,25 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
         "catering",
         "accessibility",
         "notes",
+        "cateringStyle",
+        "cateringServingTime",
+        "cateringDietaryNotes",
     ):
         if not isinstance(merged.get(text_field), str):
             merged[text_field] = ""
+
+    # cateringEnabled — coerce to bool
+    raw_ce = merged.get("cateringEnabled")
+    if isinstance(raw_ce, str):
+        merged["cateringEnabled"] = raw_ce.strip().lower() in {"true", "yes", "1"}
+    else:
+        merged["cateringEnabled"] = bool(raw_ce)
+
+    # cateringBudget — coerce to int
+    try:
+        merged["cateringBudget"] = int(merged.get("cateringBudget") or 0)
+    except (TypeError, ValueError):
+        merged["cateringBudget"] = 0
 
     merged["date"] = _normalize_date(merged.get("date", ""))
     merged["registrationDeadline"] = _normalize_date(merged.get("registrationDeadline", ""))
@@ -522,6 +561,15 @@ def _collect_constraint_issues(tournament: Dict[str, Any]) -> List[Dict[str, str
             }
         )
 
+    if tournament.get("cateringEnabled") is True and not int(tournament.get("cateringBudget") or 0) > 0:
+        issues.append(
+            {
+                "code": "catering_budget_required",
+                "field": "cateringBudget",
+                "message": "A catering budget is required when catering is enabled.",
+            }
+        )
+
     return issues
 
 
@@ -555,6 +603,8 @@ def _default_clarifying_question(
             )
         if first_issue["field"] == "teeTimeInterval":
             return "What tee time interval would you like to use in minutes?"
+        if first_issue["field"] == "cateringBudget":
+            return "You've indicated catering is needed — what is the catering budget?"
 
     question_map = {
         "name": "What should the tournament be called?",

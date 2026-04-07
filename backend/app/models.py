@@ -1,5 +1,5 @@
-from typing import Any, Dict, List, Optional
-from pydantic import BaseModel, field_validator, Field
+from typing import Any, Dict, List, Literal, Optional
+from pydantic import BaseModel, field_validator, model_validator, Field
 
 
 # ─────────────────────────── existing chat / generate ────────────────────
@@ -39,6 +39,8 @@ class GenerateRequest(BaseModel):
 class GenerateResponse(BaseModel):
     schedule: List[Dict[str, Any]]
     brochure: Dict[str, Any]
+    rule_sheet: Optional[Dict[str, Any]] = None
+    fnb_summary: Optional[Dict[str, Any]] = None
 
 
 # ─────────────────────────── tournament persistence ──────────────────────
@@ -65,14 +67,24 @@ class ShuffleResponse(BaseModel):
 class RegisterRequest(BaseModel):
     first_name: str
     last_name: str
+    phone_number: str
+    rental_clubs: bool = False
+    club_hand: Optional[Literal["left", "right"]] = None
+    team_name: Optional[str] = None
 
-    @field_validator("first_name", "last_name")
+    @field_validator("first_name", "last_name", "phone_number")
     @classmethod
     def _not_empty(cls, v: str) -> str:
         v = v.strip()
         if not v:
-            raise ValueError("Name fields cannot be empty")
+            raise ValueError("This field cannot be empty")
         return v
+
+    @model_validator(mode="after")
+    def _club_hand_required(self) -> "RegisterRequest":
+        if self.rental_clubs and self.club_hand is None:
+            raise ValueError("club_hand must be 'left' or 'right' when rental_clubs is True")
+        return self
 
 
 class RegisterResponse(BaseModel):
@@ -143,6 +155,68 @@ class SendInviteRequest(BaseModel):
 
 
 class SendInviteResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# ─────────────────────────── club operations sheet ───────────────────────
+
+
+class SendClubSheetRequest(BaseModel):
+    emails: List[str]
+    organizer_name: Optional[str] = ""
+    organizer_email: Optional[str] = ""
+    organizer_phone: Optional[str] = ""
+
+    @field_validator("emails")
+    @classmethod
+    def _at_least_one(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("At least one recipient email is required")
+        return v
+
+
+class SendClubSheetResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# ─────────────────────────── rule sheet email ────────────────────────────
+
+
+class SendRuleSheetRequest(BaseModel):
+    recipients: List[str]
+    tournament_meta: Dict[str, Any]
+
+    @field_validator("recipients")
+    @classmethod
+    def _at_least_one(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("At least one recipient email is required")
+        return v
+
+
+class SendRuleSheetResponse(BaseModel):
+    success: bool
+    message: str
+
+
+# ─────────────────────────── F&B summary email ───────────────────────────
+
+
+class SendFnBSummaryRequest(BaseModel):
+    recipients: List[str]
+    tournament_meta: Dict[str, Any]
+
+    @field_validator("recipients")
+    @classmethod
+    def _at_least_one(cls, v: List[str]) -> List[str]:
+        if not v:
+            raise ValueError("At least one recipient email is required")
+        return v
+
+
+class SendFnBSummaryResponse(BaseModel):
     success: bool
     message: str
 

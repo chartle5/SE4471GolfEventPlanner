@@ -5,8 +5,20 @@ export default function ScheduleDraft() {
   const [schedule, setSchedule] = useState(null)
   const [brochure, setBrochure] = useState(null)
   const [tournament, setTournament] = useState(null)
+  const [ruleSheet, setRuleSheet] = useState(null)
+  const [fnbSummary, setFnbSummary] = useState(null)
   const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
+  // rule sheet email modal
+  const [ruleSheetModal, setRuleSheetModal] = useState(false)
+  const [ruleSheetEmails, setRuleSheetEmails] = useState('')
+  const [ruleSheetSending, setRuleSheetSending] = useState(false)
+  const [ruleSheetResult, setRuleSheetResult] = useState(null)
+  // F&B email modal
+  const [fnbModal, setFnbModal] = useState(false)
+  const [fnbEmails, setFnbEmails] = useState('')
+  const [fnbSending, setFnbSending] = useState(false)
+  const [fnbResult, setFnbResult] = useState(null)
   const { authHeaders } = useAuth()
 
   const loadFromStorage = useCallback(() => {
@@ -17,6 +29,10 @@ export default function ScheduleDraft() {
       if (s) setSchedule(JSON.parse(s))
       if (b) setBrochure(JSON.parse(b))
       if (t) setTournament(JSON.parse(t))
+      const rs = localStorage.getItem('golfDraftRuleSheet')
+      const fb = localStorage.getItem('golfDraftFnBSummary')
+      if (rs) setRuleSheet(JSON.parse(rs))
+      if (fb) setFnbSummary(JSON.parse(fb))
     } catch {
       // ignore parse errors
     }
@@ -182,6 +198,206 @@ export default function ScheduleDraft() {
           </button>
         )}
       </div>
+
+      {/* Rule Sheet card */}
+      {ruleSheet && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 24 }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid #e5e7eb',
+            fontWeight: 700,
+            fontSize: 15,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>&#128220; Player Information Guide</span>
+            <button
+              onClick={() => { setRuleSheetModal(true); setRuleSheetEmails(''); setRuleSheetResult(null) }}
+              style={{
+                background: '#0891b2', color: '#fff', border: 'none',
+                padding: '7px 16px', borderRadius: 6, fontSize: 13,
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Send to Players
+            </button>
+          </div>
+          <div style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}>
+            <strong>Subject:</strong> {ruleSheet.subject}
+          </div>
+          <div style={{
+            margin: '0 20px 16px',
+            background: '#f0fdfa',
+            border: '1px solid #99f6e4',
+            borderRadius: 6,
+            padding: '12px 16px',
+          }}>
+            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#134e4a', lineHeight: 1.6 }}>
+              {ruleSheet.body?.slice(0, 600)}{ruleSheet.body?.length > 600 ? '\n…' : ''}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* F&B Summary card */}
+      {fnbSummary && (
+        <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 24 }}>
+          <div style={{
+            padding: '14px 20px',
+            borderBottom: '1px solid #e5e7eb',
+            fontWeight: 700,
+            fontSize: 15,
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+          }}>
+            <span>&#127869; Food &amp; Beverage Summary</span>
+            <button
+              onClick={() => { setFnbModal(true); setFnbEmails(''); setFnbResult(null) }}
+              style={{
+                background: '#d97706', color: '#fff', border: 'none',
+                padding: '7px 16px', borderRadius: 6, fontSize: 13,
+                fontWeight: 600, cursor: 'pointer',
+              }}
+            >
+              Send to Caterer
+            </button>
+          </div>
+          <div style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}>
+            <strong>Subject:</strong> {fnbSummary.subject}
+          </div>
+          <div style={{
+            margin: '0 20px 16px',
+            background: '#fffbeb',
+            border: '1px solid #fde68a',
+            borderRadius: 6,
+            padding: '12px 16px',
+          }}>
+            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#78350f', lineHeight: 1.6 }}>
+              {fnbSummary.body?.slice(0, 600)}{fnbSummary.body?.length > 600 ? '\n…' : ''}
+            </pre>
+          </div>
+        </div>
+      )}
+
+      {/* Rule Sheet Email Modal */}
+      {ruleSheetModal && (
+        <div
+          onClick={() => { if (!ruleSheetSending) setRuleSheetModal(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ background: '#0891b2', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Player Information Guide</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{meta.name || 'Tournament'}</div>
+              </div>
+              <button onClick={() => setRuleSheetModal(false)} disabled={ruleSheetSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ background: '#ecfeff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
+              Emails the full Player Information Guide to participants — event details, format, conduct rules, and catering info.
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
+              <textarea
+                value={ruleSheetEmails}
+                onChange={(e) => setRuleSheetEmails(e.target.value)}
+                placeholder="e.g. player1@example.com player2@example.com"
+                rows={3}
+                disabled={ruleSheetSending}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
+              />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
+              {ruleSheetResult && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: ruleSheetResult.ok ? '#f0fdf4' : '#fef2f2', color: ruleSheetResult.ok ? '#166534' : '#dc2626', border: `1px solid ${ruleSheetResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
+                  {ruleSheetResult.message}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setRuleSheetModal(false)} disabled={ruleSheetSending} style={draftBtnStyle}>Cancel</button>
+              <button
+                disabled={ruleSheetSending}
+                onClick={async () => {
+                  const emails = ruleSheetEmails.split(/[\s,;]+/).map(e => e.trim()).filter(Boolean)
+                  if (!emails.length) { setRuleSheetResult({ ok: false, message: 'Please enter at least one email address.' }); return }
+                  setRuleSheetSending(true); setRuleSheetResult(null)
+                  try {
+                    const r = await fetch('http://localhost:8000/email/send-rule-sheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
+                    const d = await r.json()
+                    setRuleSheetResult({ ok: d.success, message: d.message })
+                    if (d.success) setTimeout(() => setRuleSheetModal(false), 2000)
+                  } catch { setRuleSheetResult({ ok: false, message: 'Could not reach the server.' }) }
+                  finally { setRuleSheetSending(false) }
+                }}
+                style={{ background: ruleSheetSending ? '#67e8f9' : '#0891b2', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: ruleSheetSending ? 'default' : 'pointer' }}
+              >
+                {ruleSheetSending ? 'Sending…' : 'Send Guide'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* F&B Email Modal */}
+      {fnbModal && (
+        <div
+          onClick={() => { if (!fnbSending) setFnbModal(false) }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
+            <div style={{ background: '#d97706', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 16 }}>Send F&amp;B Summary</div>
+                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{meta.name || 'Tournament'}</div>
+              </div>
+              <button onClick={() => setFnbModal(false)} disabled={fnbSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>✕</button>
+            </div>
+            <div style={{ background: '#fffbeb', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
+              Emails the Food &amp; Beverage Summary / Banquet Order Sheet to your caterer or venue contact.
+            </div>
+            <div style={{ padding: '20px 24px' }}>
+              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
+              <textarea
+                value={fnbEmails}
+                onChange={(e) => setFnbEmails(e.target.value)}
+                placeholder="e.g. catering@venue.com"
+                rows={3}
+                disabled={fnbSending}
+                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
+              />
+              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
+              {fnbResult && (
+                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: fnbResult.ok ? '#f0fdf4' : '#fef2f2', color: fnbResult.ok ? '#166534' : '#dc2626', border: `1px solid ${fnbResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
+                  {fnbResult.message}
+                </div>
+              )}
+            </div>
+            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
+              <button onClick={() => setFnbModal(false)} disabled={fnbSending} style={draftBtnStyle}>Cancel</button>
+              <button
+                disabled={fnbSending}
+                onClick={async () => {
+                  const emails = fnbEmails.split(/[\s,;]+/).map(e => e.trim()).filter(Boolean)
+                  if (!emails.length) { setFnbResult({ ok: false, message: 'Please enter at least one email address.' }); return }
+                  setFnbSending(true); setFnbResult(null)
+                  try {
+                    const r = await fetch('http://localhost:8000/email/send-fnb-summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
+                    const d = await r.json()
+                    setFnbResult({ ok: d.success, message: d.message })
+                    if (d.success) setTimeout(() => setFnbModal(false), 2000)
+                  } catch { setFnbResult({ ok: false, message: 'Could not reach the server.' }) }
+                  finally { setFnbSending(false) }
+                }}
+                style={{ background: fnbSending ? '#fcd34d' : '#d97706', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: fnbSending ? 'default' : 'pointer' }}
+              >
+                {fnbSending ? 'Sending…' : 'Send Summary'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -198,4 +414,15 @@ const thStyle = {
 const tdStyle = {
   padding: '10px 16px',
   color: '#111827',
+}
+
+const draftBtnStyle = {
+  background: 'transparent',
+  border: '1px solid #6b7280',
+  color: '#374151',
+  padding: '6px 16px',
+  borderRadius: 6,
+  fontSize: 13,
+  cursor: 'pointer',
+  fontWeight: 500,
 }
