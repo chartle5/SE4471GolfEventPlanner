@@ -116,3 +116,25 @@ async def register_player(token: str, payload: RegisterRequest, db: DB):
         players_registered=result["players_registered"],
         total_players=result["total_players"],
     )
+
+
+@router.delete("/{token}")
+async def clear_registrations(token: str, db: DB):
+    """
+    Clear all registrations for a tournament and reset the schedule to placeholder
+    names (Player 1, Player 2, …).  Uses the registration token as the shared
+    secret — no additional auth required.  Intended for development and testing.
+    """
+    doc = await crud.get_tournament_by_token(db, token)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Registration link not found")
+
+    success = await crud.clear_registrations(db, doc["tournament_id"])
+    if not success:
+        raise HTTPException(status_code=500, detail="Failed to clear registrations")
+
+    return {
+        "cleared": True,
+        "tournament_id": doc["tournament_id"],
+        "message": "All registrations cleared and schedule reset to placeholders.",
+    }

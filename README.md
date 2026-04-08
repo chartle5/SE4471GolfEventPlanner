@@ -207,6 +207,89 @@ This setup is intended for a small proof of concept with roughly ten short docum
 If the corpus grows, the next step would be moving chunk storage and metadata into a
 vector database or a persistent file-backed index.
 
+## Populating a Tournament with Test Players
+
+The script `register_test_players.sh` at the project root lets you quickly fill a
+tournament with dummy players for testing — no manual form filling required.
+
+### Prerequisites
+
+- Both the **backend** (`http://localhost:8000`) and **frontend** (`http://localhost:5173`) must be running.
+- A tournament must already be **created and saved** through the UI (Plan Tournament → Save Tournament).
+- `curl` and `python3` must be available (standard on macOS/Linux).
+
+### Step 1 — Create and save a tournament
+
+1. Open `http://localhost:5173` and log in.
+2. Go to **Plan Tournament** and use the AI chat to build a tournament:
+   - Set a **player count** (e.g. 20).
+   - Set **event type** to `team` and choose a **team size** (1, 2, or 4) if you want grouped teams.
+   - Include catering if you want to test the F&B Summary document.
+3. Once the AI finishes, click **Save Tournament** on the Schedule Draft page.
+
+### Step 2 — Find the registration token
+
+The registration token is a UUID string that the backend assigns when you save a tournament. You need it to tell the script which tournament to register players into.
+
+**Option A — DevTools (always works)**
+
+1. With the app open at `http://localhost:5173`, press **F12** (or right-click anywhere on the page → **Inspect**) to open DevTools.
+2. Click the **Application** tab at the top of DevTools.
+   - If you don't see it, click the **»** overflow arrow — it may be hidden.
+3. In the left sidebar, expand **Local Storage** and click **`http://localhost:5173`**.
+4. In the key list on the right, click the row named **`savedReservations`**.
+5. The value panel will show a JSON array. Each item is a saved tournament. Find the one you just saved (check the `name` or `savedAt` fields).
+6. Look for the field **`registration_token`** inside that item. It looks like:
+   ```
+   "registration_token": "9a667837-f3ff-4933-8f85-323948ceb547"
+   ```
+7. Copy that UUID value — that is what you paste into the script prompt.
+
+> **Tip:** The most recently saved tournament is usually the last item in the array. If the JSON appears collapsed, click the triangle/arrow next to the array to expand it, then expand the individual tournament object to see all its fields.
+
+### Step 3 — Run the script
+
+From the project root:
+
+```bash
+./register_test_players.sh
+```
+
+If the backend is running on a different port, prefix your URL:
+
+```bash
+BACKEND_URL=http://localhost:8001 ./register_test_players.sh
+```
+
+The script will:
+
+1. Ask for the **registration token** — paste the UUID from Step 2.
+2. Fetch and display the tournament details so you can confirm it's the right one.
+3. Ask for the **team size** to use when grouping players (enter `1`, `2`, or `4`).
+   - Use the same value as the tournament's saved team size to avoid warnings.
+4. Ask **how many players** to register (capped at the remaining slot count).
+5. Register each player (`Player 1`, `Player 2`, …) with sequential team names
+   (`Team 1`, `Team 2`, …) and print a ✓ or ✗ for each.
+
+### Step 4 — Verify
+
+- Go to **Reservations** → select your tournament → **View Registrants**.
+- All registered players should appear, grouped by team.
+- **Cart Placards** will now render with real player names.
+- The **Schedule** will show players assigned to tee times.
+
+### Notes
+
+- Players are named `Player 1`, `Player 2`, etc. — fine for testing, not for demos to clients.
+- If you run the script multiple times, player numbering continues from the current
+  registration count so names will not overlap.
+- The script warns you if your chosen team size differs from the tournament's saved
+  setting — the backend will reject registrations that exceed the per-team cap.
+- To reset players, delete the tournament from Reservations and re-save it, then
+  re-run the script.
+
+---
+
 ## Troubleshooting
 
 ### Backend Issues

@@ -2,8 +2,9 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # register_test_players.sh
 #
-# Reusable script to register test players for a Golf Event Planner tournament.
-# Automatically detects event type (individual / team) and assigns team names.
+# Reusable script to register realistic-looking test players for a Golf Event
+# Planner tournament. Automatically detects event type (individual / team) and
+# assigns team names.  Supports clearing existing registrations before re-running.
 #
 # Usage:
 #   ./register_test_players.sh
@@ -22,6 +23,23 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 RESET='\033[0m'
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+# Lowercase a string without relying on bash 4+ ${var,,} syntax
+lowercase() { echo "$1" | tr '[:upper:]' '[:lower:]'; }
+
+# ── Name pools (30 first names × 30 last names = 900 unique combinations) ────
+FIRST_NAMES=(
+  "Jack" "Emma" "Liam" "Olivia" "Noah" "Ava" "William" "Sophia" "James" "Isabella"
+  "Oliver" "Mia" "Benjamin" "Charlotte" "Elijah" "Amelia" "Lucas" "Harper" "Mason" "Evelyn"
+  "Logan" "Abigail" "Ethan" "Emily" "Aiden" "Elizabeth" "Ryan" "Sofia" "Michael" "Victoria"
+)
+
+LAST_NAMES=(
+  "Smith" "Johnson" "Williams" "Brown" "Jones" "Garcia" "Miller" "Davis" "Wilson" "Taylor"
+  "Anderson" "Thomas" "Jackson" "White" "Harris" "Martin" "Thompson" "Robinson" "Clark" "Rodriguez"
+  "Lewis" "Lee" "Walker" "Hall" "Allen" "Young" "Hernandez" "King" "Wright" "Scott"
+)
+
 echo ""
 echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════════╗${RESET}"
 echo -e "${BOLD}${CYAN}║   Golf Event Planner — Test Player Registrar ║${RESET}"
@@ -31,7 +49,7 @@ echo -e "  Backend: ${CYAN}${BASE_URL}${RESET}"
 echo ""
 
 # ── Step 1: Registration token ───────────────────────────────────────────────
-echo -e "  ${BOLD}Tip:${RESET} Find your token in the browser DevTools:"
+echo -e "  ${BOLD}Tip:${RESET} Find your token in DevTools:"
 echo -e "  Application → Local Storage → savedReservations → registration_token"
 echo ""
 read -rp "$(echo -e "  ${BOLD}Enter registration token:${RESET} ")" TOKEN
@@ -79,12 +97,42 @@ printf  "  │  %-43s│\n" "Registered: $PLAYERS_REGISTERED / $TOTAL_SLOTS  ($S
 echo -e "  └─────────────────────────────────────────────┘"
 echo ""
 
-if [[ "$IS_FULL" == "True" ]]; then
-  echo -e "  ${RED}This tournament is already full — no slots remaining.${RESET}"
-  exit 1
+# ── Step 3: Offer to clear existing registrations ────────────────────────────
+if [[ "$PLAYERS_REGISTERED" -gt 0 ]]; then
+  if [[ "$IS_FULL" == "True" ]]; then
+    echo -e "  ${YELLOW}⚠  Tournament is full (${PLAYERS_REGISTERED} / ${TOTAL_SLOTS} registered).${RESET}"
+  else
+    echo -e "  ${YELLOW}⚠  ${PLAYERS_REGISTERED} player(s) are already registered.${RESET}"
+  fi
+  echo -e "  Clearing will remove all existing players and reset the schedule"
+  echo -e "  so you can start fresh (useful when re-running for testing)."
+  echo ""
+  read -rp "$(echo -e "  ${BOLD}Clear existing registrations before adding new ones? (y/n):${RESET} ")" CLEAR_CONFIRM
+  if [[ "$(lowercase "$CLEAR_CONFIRM")" != "y" ]]; then
+    if [[ "$IS_FULL" == "True" ]]; then
+      echo -e "  ${RED}Tournament is full and no slots were cleared — nothing to register.${RESET}"
+      exit 1
+    fi
+    echo ""
+  else
+    echo ""
+    echo -e "  ${CYAN}Clearing existing registrations...${RESET}"
+    CLEAR_RESP=$(curl -s -w "\n%{http_code}" -X DELETE "${BASE_URL}/register/${TOKEN}")
+    CLEAR_CODE=$(echo "$CLEAR_RESP" | tail -n1)
+    if [[ "$CLEAR_CODE" == "200" ]]; then
+      echo -e "  ${GREEN}✓ All registrations cleared.${RESET}"
+      PLAYERS_REGISTERED=0
+      SLOTS_REMAINING="$TOTAL_SLOTS"
+      IS_FULL="False"
+    else
+      echo -e "  ${RED}Failed to clear registrations (HTTP ${CLEAR_CODE}).${RESET}"
+      exit 1
+    fi
+    echo ""
+  fi
 fi
 
-# ── Step 3: Team size ────────────────────────────────────────────────────────
+# ── Step 4: Team size ────────────────────────────────────────────────────────
 echo -e "  ${BOLD}Team size controls how players are grouped into teams.${RESET}"
 echo -e "  ${CYAN}1${RESET} = individual (no teams)   ${CYAN}2${RESET} = pairs   ${CYAN}4${RESET} = foursomes"
 echo -e "  Tournament is saved with team size: ${BOLD}${TEAM_SIZE}${RESET}"
@@ -111,11 +159,11 @@ if [[ "$TEAM_SIZE_CHOICE" != "$TEAM_SIZE" ]]; then
     echo -e "  Event type is '${EVENT_TYPE}' — team names will not be sent.${RESET}"
   fi
   read -rp "$(echo -e "  ${BOLD}Continue anyway? (y/n):${RESET} ")" WARN_CONFIRM
-  [[ "${WARN_CONFIRM,,}" != "y" ]] && echo -e "  Cancelled." && exit 0
+  [[ "$(lowercase "$WARN_CONFIRM")" != "y" ]] && echo -e "  Cancelled." && exit 0
 fi
 echo ""
 
-# ── Step 4: How many players? ─────────────────────────────────────────────────
+# ── Step 5: How many players? ─────────────────────────────────────────────────
 read -rp "$(echo -e "  ${BOLD}How many players to register?${RESET} (max ${SLOTS_REMAINING}): ")" COUNT
 COUNT="${COUNT//[[:space:]]/}"
 
@@ -137,36 +185,63 @@ if [[ "$EVENT_TYPE" == "team" && "$TEAM_SIZE_CHOICE" -gt 1 ]]; then
     echo -e "  ${YELLOW}Warning: ${COUNT} player(s) doesn't divide evenly into groups of ${TEAM_SIZE_CHOICE}."
     echo -e "  Result: $(( COUNT / TEAM_SIZE_CHOICE )) complete team(s) + ${REMAINDER} leftover player(s).${RESET}"
     read -rp "$(echo -e "  ${BOLD}Continue anyway? (y/n):${RESET} ")" CONFIRM
-    [[ "${CONFIRM,,}" != "y" ]] && echo -e "  Cancelled." && exit 0
+    [[ "$(lowercase "$CONFIRM")" != "y" ]] && echo -e "  Cancelled." && exit 0
   fi
 fi
 
-# ── Step 5: Register players ──────────────────────────────────────────────────
+# ── Step 6: Register players ──────────────────────────────────────────────────
 echo ""
-echo -e "  ${CYAN}Registering ${COUNT} player(s)...${RESET}"
+echo -e "  ${CYAN}Registering ${COUNT} player(s) with realistic names...${RESET}"
 echo ""
+
+N_FIRST=${#FIRST_NAMES[@]}
+N_LAST=${#LAST_NAMES[@]}
 
 SUCCESS=0
 FAIL=0
 
 for i in $(seq 1 "$COUNT"); do
   GLOBAL_NUM=$(( PLAYERS_REGISTERED + i ))
-  FIRST="Player"
-  LAST="$GLOBAL_NUM"
+
+  # Pick names: rotate through the pool using a prime-step offset for last names
+  # so the same surname doesn't repeat in a predictable short cycle.
+  F_IDX=$(( (GLOBAL_NUM - 1) % N_FIRST ))
+  L_IDX=$(( ((GLOBAL_NUM - 1) * 7 + 3) % N_LAST ))
+  FIRST="${FIRST_NAMES[$F_IDX]}"
+  LAST="${LAST_NAMES[$L_IDX]}"
+
+  # Phone: fake 555 number, zero-padded to 4 digits
   PHONE="555-$(printf '%04d' "$GLOBAL_NUM")"
 
+  # Rental clubs: ~15% chance per player; if renting, randomly assign club hand
+  if [[ $(( RANDOM % 100 )) -lt 15 ]]; then
+    RENTAL="true"
+    if [[ $(( RANDOM % 2 )) -eq 0 ]]; then
+      CLUB_HAND="right"
+    else
+      CLUB_HAND="left"
+    fi
+  else
+    RENTAL="false"
+    CLUB_HAND="null"
+  fi
+
   if [[ "$EVENT_TYPE" == "team" ]]; then
-    # Group players globally based on TEAM_SIZE_CHOICE:
-    #   size=1 → every player is their own team (Team N = their global number)
-    #   size=2 → pairs: players 1+2 → Team 1, 3+4 → Team 2, …
-    #   size=4 → foursomes: players 1-4 → Team 1, 5-8 → Team 2, …
     GLOBAL_SLOT=$(( PLAYERS_REGISTERED + i - 1 ))
     TEAM_NUM=$(( GLOBAL_SLOT / TEAM_SIZE_CHOICE + 1 ))
     TEAM_NAME="Team $TEAM_NUM"
-    PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":false,\"team_name\":\"${TEAM_NAME}\"}"
+    if [[ "$RENTAL" == "true" ]]; then
+      PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":true,\"club_hand\":\"${CLUB_HAND}\",\"team_name\":\"${TEAM_NAME}\"}"
+    else
+      PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":false,\"club_hand\":null,\"team_name\":\"${TEAM_NAME}\"}"
+    fi
   else
     TEAM_NAME=""
-    PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":false}"
+    if [[ "$RENTAL" == "true" ]]; then
+      PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":true,\"club_hand\":\"${CLUB_HAND}\"}"
+    else
+      PAYLOAD="{\"first_name\":\"${FIRST}\",\"last_name\":\"${LAST}\",\"phone_number\":\"${PHONE}\",\"rental_clubs\":false,\"club_hand\":null}"
+    fi
   fi
 
   RESP=$(curl -s -w "\n%{http_code}" -X POST "${BASE_URL}/register/${TOKEN}" \
@@ -179,10 +254,12 @@ for i in $(seq 1 "$COUNT"); do
   RSUCCESS=$(echo "$RBODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('success',False))" 2>/dev/null || echo "False")
 
   LABEL="${FIRST} ${LAST}"
+  RENTAL_LABEL=""
+  [[ "$RENTAL" == "true" ]] && RENTAL_LABEL=" ${YELLOW}[rental clubs — ${CLUB_HAND}-handed]${RESET}"
   [[ -n "$TEAM_NAME" ]] && LABEL="${LABEL} (${TEAM_NAME})"
 
   if [[ "$HTTP" == "200" && "$RSUCCESS" == "True" ]]; then
-    echo -e "  ${GREEN}✓${RESET} ${LABEL}"
+    echo -e "  ${GREEN}✓${RESET} ${LABEL}${RENTAL_LABEL}"
     echo -e "    ${RMSG}"
     SUCCESS=$(( SUCCESS + 1 ))
   else
