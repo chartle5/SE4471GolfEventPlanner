@@ -18,7 +18,7 @@ export const tournamentState = {
   budget: 0,
   cateringEnabled: false,
   cateringBudget: 0,
-  cateringStyle: '',
+  cateringItems: '',
   cateringServingTime: '',
   cateringDietaryNotes: '',
   staffing: {

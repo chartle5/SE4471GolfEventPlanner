@@ -48,7 +48,7 @@ DOCUMENT_IMPACT_FIELDS = {
     "teamSize",
     "cateringEnabled",
     "cateringBudget",
-    "cateringStyle",
+    "cateringItems",
     "cateringServingTime",
     "cateringDietaryNotes",
 }
@@ -81,7 +81,7 @@ class TournamentState(BaseModel):
     budget: int = 0
     cateringEnabled: bool = False
     cateringBudget: int = 0
-    cateringStyle: str = ""
+    cateringItems: str = ""
     cateringServingTime: str = ""
     cateringDietaryNotes: str = ""
     staffing: StaffingState = Field(default_factory=StaffingState)
@@ -163,7 +163,8 @@ OPTIONAL but useful: entryFee, description, sponsors, staffing, accessibility, n
 CATERING WORKFLOW — Follow this sub-sequence when the user mentions catering or food:
   1. Set cateringEnabled = true.
   2. Ask for cateringBudget (REQUIRED once catering is enabled — a positive number in dollars).
-  3. Ask for cateringStyle (e.g. Buffet, Plated Meal, BBQ, Sandwich Station, Boxed Lunch).
+  3. Ask for cateringItems — prompt the user for specific example menu items the caterer should provide
+     (e.g. "burgers, hot dogs, garden salad, soft drinks, dessert table"). Store as a comma-separated string.
   4. Ask for cateringServingTime (e.g. post-round banquet, at the turn, before the round).
   5. Optionally ask for cateringDietaryNotes (any known dietary requirements).
 IMPORTANT: cateringBudget is REQUIRED once cateringEnabled is true — do not mark the event ready
@@ -235,7 +236,7 @@ Rules:
 - If eventType is "individual", set teamSize to 1 in the candidate object.
 - If the user mentions catering or food, set cateringEnabled to true and set
   clarifying_focus to "cateringBudget" if cateringBudget is still 0.
-- Always include cateringEnabled (boolean), cateringBudget (number), cateringStyle,
+- Always include cateringEnabled (boolean), cateringBudget (number), cateringItems,
   cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
 - If the user is asking for live weather, sunrise, or sunset information without changing
   tournament fields, set response_mode to "live_data_reply".
@@ -334,7 +335,7 @@ EXAMPLE_EMPTY_TOURNAMENT = {
     "budget": 0,
     "cateringEnabled": False,
     "cateringBudget": 0,
-    "cateringStyle": "",
+    "cateringItems": "",
     "cateringServingTime": "",
     "cateringDietaryNotes": "",
     "staffing": {
@@ -432,7 +433,7 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
         "catering",
         "accessibility",
         "notes",
-        "cateringStyle",
+        "cateringItems",
         "cateringServingTime",
         "cateringDietaryNotes",
     ):
