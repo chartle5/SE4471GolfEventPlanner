@@ -6,6 +6,7 @@ A full-stack web application for planning and managing golf tournaments. The app
 
 - **AI-Powered Planning**: Chat-based tournament planning using Azure OpenAI
 - **RAG Proof of Concept**: Local document chunking with in-memory embeddings for lightweight retrieval
+- **Local MCP Weather Server**: Streamable HTTP MCP sidecar for live weather plus sunrise and sunset lookup worldwide
 - **Tournament Management**: Create and manage golf tournament details
 - **Knowledge Base**: Access tournament planning resources and best practices
 - **Workflow Visualization**: View planning workflows and artifacts
@@ -16,13 +17,14 @@ A full-stack web application for planning and managing golf tournaments. The app
 - **Backend**: Python FastAPI with Azure OpenAI integration
 - **Frontend**: React with Vite, React Router
 - **AI**: Azure OpenAI GPT chat models plus a lightweight in-memory RAG layer with local embeddings
+- **MCP**: Local Python MCP server for external API access during development
 
 ## Prerequisites
 
 Before setting up the project, ensure you have the following installed:
 
 - **Node.js** (version 16 or higher) - for the frontend
-- **Python** (version 3.8 or higher) - for the backend
+- **Python** (version 3.10 or higher) - for the backend and local MCP server
 - **Azure OpenAI Account** - for AI chat functionality
 
 You can download Node.js from [nodejs.org](https://nodejs.org/) and Python from [python.org](https://python.org/).
@@ -69,11 +71,18 @@ cd SE4471GolfEventPlanner
    AZURE_OPENAI_API_VERSION=2023-12-01-preview
    AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
    AZURE_OPENAI_DEPLOYMENT=your-deployment-name
+   MCP_WEATHER_SERVER_URL=http://127.0.0.1:8001/mcp
+   MONGODB_SERVER_SELECTION_TIMEOUT_MS=5000
+   MONGODB_STARTUP_REQUIRED=false
    RAG_LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
    LOG_LLM_PROMPTS=false
    ```
 
    Replace the placeholder values with your actual Azure OpenAI resource details.
+   `MCP_WEATHER_SERVER_URL` is optional and defaults to `http://127.0.0.1:8001/mcp`.
+   `MONGODB_SERVER_SELECTION_TIMEOUT_MS` controls how long the backend waits for MongoDB
+   during startup. `MONGODB_STARTUP_REQUIRED=false` lets chat and other non-database routes
+   start even when MongoDB is unavailable.
    `RAG_LOCAL_EMBEDDING_MODEL` is optional and defaults to
    `sentence-transformers/all-MiniLM-L6-v2`, which runs locally in Python for the
    RAG proof of concept. Set `LOG_LLM_PROMPTS=true` when you want the backend console
@@ -86,6 +95,14 @@ cd SE4471GolfEventPlanner
    ```
 
    The backend will run on `http://localhost:8000`.
+
+7. Start the local MCP weather server in a second backend terminal:
+   ```bash
+   uvicorn mcp_weather_server:app --reload --port 8001
+   ```
+
+   The MCP server will run on `http://localhost:8001`, and the Streamable HTTP
+   MCP endpoint will be `http://localhost:8001/mcp`.
 
 ### 3. Frontend Setup
 
@@ -110,6 +127,31 @@ cd SE4471GolfEventPlanner
 
 Open your browser and navigate to `http://localhost:5173` to access the Golf Event Planner application.
 
+## Local MCP Weather Server
+
+The repository includes a local MCP sidecar at `backend/mcp_weather_server.py`.
+It uses Open-Meteo for global geocoding plus forecast data, including daily
+`sunrise` and `sunset` values.
+
+Available tools:
+
+- `search_weather_locations` - resolve ambiguous place names into candidate locations
+- `get_weather_forecast` - current weather plus daily sunrise and sunset for a named location
+- `get_weather_forecast_by_coordinates` - the same data for exact latitude and longitude
+
+Quick local verification:
+
+1. Start the MCP server:
+   ```bash
+   cd backend
+   uvicorn mcp_weather_server:app --reload --port 8001
+   ```
+2. Visit `http://localhost:8001/` for server metadata or `http://localhost:8001/healthz` for a health check.
+3. Point an MCP client or inspector at `http://localhost:8001/mcp`.
+
+When the MCP server is running, the chatbot can answer live weather questions such
+as "What is the current temperature in Toronto?" or "When is sunrise in St Andrews?".
+
 ## Project Structure
 
 ```
@@ -126,8 +168,10 @@ SE4471GolfEventPlanner/
 │   │   └── services/
 │   │       ├── agent.py     # Chat orchestration and prompt handling
 │   │       ├── openai_client.py  # Shared Azure OpenAI client configuration
-│   │       └── rag.py       # Local chunking and in-memory retrieval
-│   └── requirements.txt     # Python dependencies
+│   │       ├── rag.py       # Local chunking and in-memory retrieval
+│   │       └── weather_service.py  # Open-Meteo geocoding and forecast integration
+│   ├── mcp_weather_server.py # Local Streamable HTTP MCP sidecar
+│   └── requirements.txt      # Python dependencies
 ├── frontend/
 │   ├── src/
 │   │   ├── components/      # React components
@@ -170,6 +214,7 @@ vector database or a persistent file-backed index.
 - **Module not found errors**: Ensure you're in the virtual environment and all dependencies are installed with `pip install -r requirements.txt`
 - **Azure OpenAI errors**: Verify your `.env` file has correct Azure OpenAI credentials
 - **Port already in use**: The backend runs on port 8000 by default. If it's occupied, you can specify a different port: `uvicorn app.main:app --reload --port 8001`
+- **MCP server port already in use**: Start the MCP server on another port, for example `uvicorn mcp_weather_server:app --reload --port 8002`
 
 ### Frontend Issues
 
@@ -186,8 +231,9 @@ vector database or a persistent file-backed index.
 ## Development
 
 - Backend API documentation available at `http://localhost:8000/docs` (FastAPI auto-generated)
+- MCP weather server endpoint available at `http://localhost:8001/mcp`
 - Frontend hot-reload enabled during development
-- Both servers support automatic restart on file changes
+- The backend, frontend, and MCP server all support automatic restart on file changes
 
 ## Contributing
 

@@ -4,6 +4,8 @@ python-dotenv
 certifi
 pydantic
 openai
+langchain
+langchain-openai
 sentence-transformers
 motor
 pymongo[srv]
@@ -11,4 +13,6 @@ sendgrid
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt
+httpx
+mcp[cli]
 fpdf2
