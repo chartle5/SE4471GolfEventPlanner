@@ -302,3 +302,31 @@ async def register_player(
         "players_registered": registered_count,
         "total_players": doc["player_count"],
     }
+
+
+async def clear_registrations(
+    db: AsyncIOMotorDatabase, tournament_id: str
+) -> bool:
+    """
+    Reset all player registrations for a tournament.
+
+    - Replaces every player slot in the schedule with sequential placeholders
+      ("Player 1", "Player 2", …) so the schedule is ready for fresh registrations.
+    - Deletes all registration audit records from the registrations collection.
+
+    Returns True if the tournament was found and reset, False otherwise.
+    """
+    doc = await get_tournament(db, tournament_id)
+    if doc is None:
+        return False
+
+    schedule: List[Dict[str, Any]] = doc.get("schedule", [])
+    player_num = 1
+    for group in schedule:
+        for i in range(len(group["players"])):
+            group["players"][i] = f"Player {player_num}"
+            player_num += 1
+
+    await _update_schedule(db, tournament_id, schedule)
+    await db.registrations.delete_many({"tournament_id": tournament_id})
+    return True

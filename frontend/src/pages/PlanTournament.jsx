@@ -1,4 +1,6 @@
 import React, { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import { tournamentState as initial } from '../data/tournament'
 
 const STATUS_ROWS = [
@@ -16,11 +18,9 @@ const STATUS_ROWS = [
   { key: 'entryFee',             label: 'Entry Fee',          required: false,                       fmt: v => v ? `$${v}` : '—' },
   { key: 'description',          label: 'Description',        required: false,                       fmt: v => v || '—' },
   { key: 'sponsors',             label: 'Sponsors',           required: false,                       fmt: v => Array.isArray(v) ? v.join(', ') || '—' : (v || '—') },
-  { key: 'catering',             label: 'Catering',           required: false,                       fmt: v => v || '—' },
-  { key: 'budget',               label: 'Budget',             required: false,                       fmt: v => v ? `$${v}` : '—' },
   { key: 'cateringEnabled',      label: 'Catering Enabled',   required: false,                       fmt: v => v ? 'Yes' : 'No' },
   { key: 'cateringBudget',       label: 'Catering Budget',    required: t => !!t.cateringEnabled,    fmt: v => v ? `$${v}` : '—' },
-  { key: 'cateringStyle',        label: 'Catering Style',     required: false,                       fmt: v => v || '—' },
+  { key: 'cateringItems',        label: 'Catering Items',     required: false,                       fmt: v => v || '—' },
   { key: 'cateringServingTime',  label: 'Serving Time',       required: false,                       fmt: v => v || '—' },
   { key: 'cateringDietaryNotes', label: 'Dietary Notes',      required: false,                       fmt: v => v || '—' },
   { key: 'accessibility',        label: 'Accessibility',      required: false,                       fmt: v => v || '—' },
@@ -97,7 +97,7 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
               width: '100%',
             }}
           >
-            {generating ? 'Generating…' : generationDone ? 'Regenerate Documents' : 'Generate Documents'}
+            {generating ? 'Saving…' : generationDone ? 'Update Tournament' : 'Save Tournament'}
           </button>
         </div>
       )}
@@ -112,6 +112,8 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
 }
 
 export default function PlanTournament() {
+  const navigate = useNavigate()
+  const { authHeaders } = useAuth()
   const [tournament, setTournament] = useState(initial)
   const [messages, setMessages] = useState([
     {
@@ -126,6 +128,7 @@ export default function PlanTournament() {
   const [readyForGeneration, setReadyForGeneration] = useState(false)
   const [generationDone, setGenerationDone] = useState(false)
   const [generating, setGenerating] = useState(false)
+  const [savedReservationId, setSavedReservationId] = useState(null)
 
   async function callGenerate(currentTournament) {
     try {
@@ -134,49 +137,88 @@ export default function PlanTournament() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tournament: currentTournament }),
       })
-      const data = await res.json()
-      localStorage.setItem('golfDraftSchedule', JSON.stringify(data.schedule))
-      localStorage.setItem('golfDraftBrochure', JSON.stringify(data.brochure))
-      localStorage.setItem('golfDraftTournament', JSON.stringify(currentTournament))
-      localStorage.setItem('golfDraftRuleSheet', JSON.stringify(data.rule_sheet ?? null))
-      localStorage.setItem('golfDraftFnBSummary', JSON.stringify(data.fnb_summary ?? null))
-      return data
+      return await res.json()
     } catch {
       return null
     }
   }
 
+  async function saveToReservations(currentTournament, genData, existingId) {
+    const resId = existingId || crypto.randomUUID()
+    let tournament_id = null
+    let registration_token = ''
+    try {
+      const saveRes = await fetch('http://localhost:8000/tournaments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          tournament: currentTournament,
+          schedule: genData.schedule,
+          brochure: genData.brochure,
+        }),
+      })
+      if (saveRes.ok) {
+        const saveData = await saveRes.json()
+        tournament_id = saveData.tournament_id
+        registration_token = saveData.registration_token
+      }
+    } catch { /* store locally even if DB save fails */ }
+
+    const entry = {
+      id: resId,
+      savedAt: new Date().toISOString(),
+      tournament_id,
+      registration_token,
+      tournament: currentTournament,
+      schedule: genData.schedule,
+      brochure: genData.brochure,
+      rule_sheet: genData.rule_sheet ?? null,
+      fnb_summary: genData.fnb_summary ?? null,
+    }
+    const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
+    const idx = stored.findIndex(r => r.id === resId)
+    if (idx >= 0) {
+      stored[idx] = entry
+    } else {
+      stored.push(entry)
+    }
+    localStorage.setItem('savedReservations', JSON.stringify(stored))
+    return resId
+  }
+
   async function handleGenerate() {
     setGenerating(true)
     const isFirst = !generationDone
-    const data = await callGenerate(tournament)
-    setGenerating(false)
-    if (data) {
-      if (isFirst) {
-        setGenerationDone(true)
-        setPhase('refinement')
-        window.open('/schedule-draft', '_blank')
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content:
-              "Your schedule has opened in a new tab. Review it, then save it from that tab.\n\nYou can keep chatting here to make any changes — just tell me what you'd like to adjust and I'll update the documents automatically.",
-          },
-        ])
-      } else {
-        window.open('/schedule-draft', '_blank')
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: 'Documents regenerated. Your updated schedule has opened in a new tab.',
-          },
-        ])
-      }
-    } else {
+    const genData = await callGenerate(tournament)
+    if (!genData) {
+      setGenerating(false)
       setError('Generation failed — is the backend running?')
+      return
     }
+    const resId = await saveToReservations(tournament, genData, isFirst ? null : savedReservationId)
+    setGenerating(false)
+    if (isFirst) {
+      setSavedReservationId(resId)
+      setGenerationDone(true)
+      setPhase('refinement')
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content:
+            "Your tournament has been saved to Reservations. You can view all documents there, send invites, and manage the event.\n\nYou can still chat here to make any changes — just tell me what you'd like to adjust.",
+        },
+      ])
+    } else {
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: 'assistant',
+          content: 'Your tournament has been updated in Reservations.',
+        },
+      ])
+    }
+    navigate('/reservations')
   }
 
   async function sendMessage(e) {
@@ -224,15 +266,17 @@ export default function PlanTournament() {
       }
 
       if (phase === 'refinement' && data.needs_regeneration && data.tournament) {
-        await callGenerate(data.tournament)
-        window.open('/schedule-draft', '_blank')
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: 'assistant',
-            content: 'Documents updated. Your updated schedule has opened in a new tab.',
-          },
-        ])
+        const genData = await callGenerate(data.tournament)
+        if (genData) {
+          await saveToReservations(data.tournament, genData, savedReservationId)
+          setMessages((prev) => [
+            ...prev,
+            {
+              role: 'assistant',
+              content: 'Documents updated. Your Reservations page has been refreshed with the latest changes.',
+            },
+          ])
+        }
       }
     } catch {
       setError('Backend error — is the server running?')

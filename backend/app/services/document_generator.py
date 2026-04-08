@@ -763,7 +763,7 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
     description   = tournament.get("description") or ""
     catering      = tournament.get("catering") or ""
     catering_enabled  = tournament.get("cateringEnabled", False)
-    catering_style    = tournament.get("cateringStyle") or ""
+    catering_items     = tournament.get("cateringItems") or ""
     catering_time     = tournament.get("cateringServingTime") or ""
     notes         = tournament.get("notes") or ""
     sponsors      = tournament.get("sponsors") or []
@@ -804,35 +804,103 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
         sp = ", ".join(sponsors) if isinstance(sponsors, list) else str(sponsors)
         body_lines.append(f"  Sponsors:     {sp}")
 
+    # ── Format-specific rules grounded in knowledge documents ────────────
+    fmt_lower = fmt.lower() if fmt and fmt != "TBD" else ""
+    if "scramble" in fmt_lower:
+        format_rules = [
+            f"  Format: {fmt}",
+            "  All players tee off; the team selects the best tee shot each time.",
+            "  All team members then play from that spot and repeat until holed out.",
+            "  Minimum drives: each player's drive must be used a minimum number of times",
+            "    (announced at the opening ceremony) — this rule is mandatory for fairness.",
+            "  Team scores are recorded as a gross team score unless otherwise announced.",
+            "  Mulligans (if offered) will be announced at check-in — use is limited.",
+        ]
+        format_rules_html = [
+            f"Format: <strong>{fmt}</strong>. All players tee off; the team selects the best tee shot.",
+            "All team members then play from that spot and repeat until holed out.",
+            "Minimum drives: each player's drive must be used a minimum number of times — confirmed at opening announcements.",
+            "Team scores recorded as a <strong>gross team score</strong> unless otherwise announced.",
+            "Mulligans (if offered) will be announced at check-in; use is limited.",
+        ]
+    elif "best ball" in fmt_lower or "four ball" in fmt_lower:
+        format_rules = [
+            f"  Format: {fmt}",
+            "  Each player plays their own ball throughout the round.",
+            "  The lowest score among team members on each hole counts as the team score.",
+            "  USGA Rules of Golf apply. Handicaps will be applied per official rules.",
+        ]
+        format_rules_html = [
+            f"Format: <strong>{fmt}</strong>. Each player plays their own ball throughout.",
+            "The lowest score among team members on each hole counts as the team score.",
+            "USGA Rules of Golf apply. Handicaps applied per official rules.",
+        ]
+    else:
+        format_rules = [
+            f"  Format: {fmt}",
+            "  USGA Rules of Golf apply unless a local rule is announced.",
+        ]
+        format_rules_html = [
+            f"Format: <strong>{fmt}</strong>. USGA Rules of Golf apply unless a local rule is announced.",
+        ]
+    _scoring = [
+        "  Scorecards will be distributed at check-in — verify your group details.",
+        "  Submit completed, signed scorecards to the scoring table immediately after play.",
+        "  Tie-break sequence: scorecard playoff on the hardest holes, then back nine,",
+        "    last six, last three, and finally the final hole.",
+    ]
+    _scoring_html = [
+        "Scorecards distributed at check-in — verify your group details.",
+        "Submit completed, <strong>signed</strong> scorecards to the scoring table immediately after play.",
+        "Tie-break sequence: hardest holes \u2192 back nine \u2192 last six \u2192 last three \u2192 final hole.",
+    ]
+    format_rules += _scoring
+    format_rules_html += _scoring_html
+
     body_lines += [
         "",
         "ARRIVAL & CHECK-IN",
         "─" * 41,
         f"  Please arrive by {arrival} for check-in and warm-up.",
-        "  Check in at the pro shop upon arrival.",
-        "  Confirm your tee time and cart assignment at check-in.",
+        "  Check in at the pro shop upon arrival to receive your scorecard and cart key.",
+        "  Confirm your tee time, cart assignment, and team pairing at check-in.",
+        "  Opening announcements (local rules, format clarifications) will be made",
+        "    before the first tee shot — attendance is required.",
         "",
         "FORMAT & SCORING",
         "─" * 41,
-        f"  Format: {fmt}",
-        "  Scorecards will be provided at check-in.",
-        "  Submit completed scorecards to the scoring table immediately after your round.",
-        "  In the event of a tie, a scorecard playoff will be used.",
+    ] + format_rules + [
+        "",
+        "PACE OF PLAY",
+        "─" * 41,
+        "  Please practise ready golf — play when it is safe and it is your turn.",
+        "  Your group must maintain pace with the group ahead at all times.",
+        "  A course marshal may issue a pace-of-play warning — respond promptly.",
+        "  If your group falls significantly behind, you may be asked to skip a hole.",
+        "  On-course contests should not delay the group behind you.",
         "",
         "PLAYER CONDUCT",
         "─" * 41,
-        "  All participants must adhere to USGA Rules of Golf.",
+        "  All participants must adhere to USGA Rules of Golf and posted local rules.",
         "  Dress code: collared shirts, golf slacks or shorts, and golf shoes required.",
         "  Cell phones must be set to silent during play.",
-        "  Slow play: groups must keep pace. A marshal may issue warnings.",
         "  Cheating or unsportsmanlike conduct will result in disqualification.",
         "",
         "CART & COURSE RULES",
         "─" * 41,
         "  Golf carts are provided. Cart assignment will be posted at the first tee.",
         "  Carts must remain on the cart path within 50 feet of the green.",
-        "  Abide by all cart signs and ropes on the course.",
+        "  Abide by all cart signs and course ropes without exception.",
         "  Damage to the course must be reported to golf club staff immediately.",
+        "",
+        "WEATHER & SAFETY",
+        "─" * 41,
+        "  In the event of lightning or dangerous weather, an air-horn signal will sound.",
+        "  All players must immediately cease play and seek shelter in the clubhouse",
+        "    or a designated on-course shelter area. Do not shelter under trees.",
+        "  The round may be paused, shortened, or cancelled at the organizer's discretion.",
+        "  Hydration stations are available on course — please stay hydrated.",
+        "  First-aid support is available. Report any medical concerns to a marshal.",
     ]
 
     if catering_enabled or catering:
@@ -841,13 +909,13 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
             "FOOD & BEVERAGE",
             "─" * 41,
         ]
-        if catering_style:
-            body_lines.append(f"  Style:        {catering_style}")
+        if catering_items:
+            body_lines.append(f"  Menu Items:   {catering_items}")
         if catering_time:
             body_lines.append(f"  Service:      {catering_time}")
         if catering:
             body_lines.append(f"  Notes:        {catering}")
-        if not catering_style and not catering_time and not catering:
+        if not catering_items and not catering_time and not catering:
             body_lines.append("  Catering will be provided — details to follow.")
 
     body_lines += [
@@ -857,6 +925,8 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
         "  Awards ceremony will take place at the conclusion of play.",
         "  Prizes will be distributed for gross and net categories (1st, 2nd, 3rd).",
         "  Closest-to-the-pin and longest drive prizes will be announced at the ceremony.",
+        "  Ties are broken via scorecard playoff: hardest holes, back nine, last six,",
+        "    last three, and finally the final hole.",
         "",
         "CONTACT",
         "─" * 41,
@@ -917,8 +987,8 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
     catering_section = ""
     if catering_enabled or catering:
         c_rows = ""
-        if catering_style:
-            c_rows += _row("Style", catering_style)
+        if catering_items:
+            c_rows += _row("Menu Items", catering_items)
         if catering_time:
             c_rows += _row("Service Time", catering_time)
         if catering:
@@ -943,29 +1013,41 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
 
       {_text_section("Arrival &amp; Check-In", [
           f"Please arrive by <strong>{arrival}</strong> for check-in and warm-up.",
-          "Check in at the pro shop upon arrival.",
-          "Confirm your tee time and cart assignment at check-in.",
+          "Check in at the pro shop upon arrival to receive your scorecard and cart key.",
+          "Confirm your tee time, cart assignment, and team pairing at check-in.",
+          "Opening announcements (local rules, format clarifications) will be made before the first tee shot — attendance is required.",
       ])}
 
-      {_text_section("Format &amp; Scoring", [
-          f"Format: <strong>{fmt}</strong>. Scorecards will be provided at check-in.",
-          "Submit completed scorecards immediately after your round.",
-          "In the event of a tie, a scorecard playoff will be used.",
+      {_text_section("Format &amp; Scoring", format_rules_html)}
+
+      {_text_section("Pace of Play", [
+          "Please practise <strong>ready golf</strong> — play when it is safe and it is your turn.",
+          "Your group must maintain pace with the group ahead at all times.",
+          "A course marshal may issue a pace-of-play warning — please respond promptly.",
+          "If your group falls significantly behind, you may be asked to skip a hole.",
+          "On-course contests and sponsor activations should not delay the group behind you.",
       ])}
 
       {_text_section("Player Conduct", [
-          "All participants must adhere to USGA Rules of Golf.",
+          "All participants must adhere to USGA Rules of Golf and posted local rules.",
           "Dress code: collared shirts, golf slacks or shorts, and golf shoes required.",
           "Cell phones must be set to silent during play.",
-          "Slow play: groups must keep pace. A marshal may issue warnings.",
           "Cheating or unsportsmanlike conduct will result in disqualification.",
       ])}
 
       {_text_section("Cart &amp; Course Rules", [
           "Golf carts are provided. Cart assignment will be posted at the first tee.",
           "Carts must remain on the cart path within 50 feet of the green.",
-          "Abide by all cart signs and ropes on the course.",
+          "Abide by all cart signs and course ropes without exception.",
           "Damage to the course must be reported to golf club staff immediately.",
+      ])}
+
+      {_text_section("Weather &amp; Safety", [
+          "In the event of <strong>lightning or dangerous weather</strong>, an air-horn signal will sound.",
+          "Players must immediately cease play and seek shelter in the clubhouse or a designated shelter area. <strong>Do not shelter under trees.</strong>",
+          "The round may be paused, shortened, or cancelled at the organiser's discretion.",
+          "Hydration stations are available on course — please stay hydrated throughout the round.",
+          "First-aid support is available on site. Report any medical concerns to a marshal immediately.",
       ])}
 
       {catering_section}
@@ -974,6 +1056,7 @@ def generate_rule_sheet(tournament: Dict[str, Any]) -> Dict[str, Any]:
           "Awards ceremony will take place at the conclusion of play.",
           "Prizes will be distributed for gross and net categories (1st, 2nd, 3rd).",
           "Closest-to-the-pin and longest drive prizes will be announced at the ceremony.",
+          "Tie-break sequence: scorecard playoff on hardest holes \u2192 back nine \u2192 last six \u2192 last three \u2192 final hole.",
       ])}
 
       {_text_section("Contact", [
@@ -1013,7 +1096,7 @@ def generate_fnb_summary(tournament: Dict[str, Any]) -> Optional[Dict[str, Any]]
     venue             = tournament.get("venue") or "TBD"
     player_count      = tournament.get("playerCount", 0)
     catering_budget   = int(tournament.get("cateringBudget") or 0)
-    catering_style    = tournament.get("cateringStyle") or "TBD"
+    catering_items    = tournament.get("cateringItems") or "TBD"
     catering_time     = tournament.get("cateringServingTime") or "TBD"
     dietary_notes     = tournament.get("cateringDietaryNotes") or ""
     catering          = tournament.get("catering") or ""
@@ -1032,7 +1115,7 @@ def generate_fnb_summary(tournament: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "",
         "CATERING DETAILS",
         "─" * 41,
-        f"  Style:         {catering_style}",
+        f"  Menu Items:    {catering_items}",
         f"  Serving Time:  {catering_time}",
         f"  Budget:        ${catering_budget:,}",
     ]
@@ -1053,7 +1136,7 @@ def generate_fnb_summary(tournament: Dict[str, Any]) -> Optional[Dict[str, Any]]
         "",
         "ACTION ITEMS FOR VENUE",
         "─" * 41,
-        f"  1. Confirm {catering_style} setup for {player_count} guests.",
+        f"  1. Prepare the following menu items for {player_count} guests: {catering_items}.",
         f"  2. Prepare for service at: {catering_time}.",
         f"  3. Adhere to total catering budget of ${catering_budget:,}.",
     ]
@@ -1093,7 +1176,7 @@ def generate_fnb_summary(tournament: Dict[str, Any]) -> Optional[Dict[str, Any]]
     )
 
     catering_rows = (
-        _row("Catering Style", catering_style)
+        _row("Menu Items", catering_items)
         + _row("Serving Time", catering_time)
         + _row("Budget", f"${catering_budget:,}")
         + (_row("Per Head", f"${per_head:.2f}") if per_head else "")
@@ -1102,7 +1185,7 @@ def generate_fnb_summary(tournament: Dict[str, Any]) -> Optional[Dict[str, Any]]
     )
 
     action_items = [
-        f"Confirm <strong>{catering_style}</strong> setup for <strong>{player_count} guests</strong>.",
+        f"Prepare the following menu items for <strong>{player_count} guests</strong>: <strong>{catering_items}</strong>.",
         f"Prepare for service at: <strong>{catering_time}</strong>.",
         f"Adhere to total catering budget of <strong>${catering_budget:,}</strong>.",
     ]

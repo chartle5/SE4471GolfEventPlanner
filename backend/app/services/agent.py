@@ -48,7 +48,7 @@ DOCUMENT_IMPACT_FIELDS = {
     "teamSize",
     "cateringEnabled",
     "cateringBudget",
-    "cateringStyle",
+    "cateringItems",
     "cateringServingTime",
     "cateringDietaryNotes",
 }
@@ -81,7 +81,7 @@ class TournamentState(BaseModel):
     budget: int = 0
     cateringEnabled: bool = False
     cateringBudget: int = 0
-    cateringStyle: str = ""
+    cateringItems: str = ""
     cateringServingTime: str = ""
     cateringDietaryNotes: str = ""
     staffing: StaffingState = Field(default_factory=StaffingState)
@@ -124,6 +124,7 @@ class WorkflowAnalysisOutput(BaseModel):
     clarifying_question: str = ""
     candidate_tournament: TournamentState = Field(default_factory=TournamentState)
     user_requested_regeneration: bool = False
+    is_general_question: bool = False
     tool_plan: ToolPlan = Field(default_factory=ToolPlan)
 
 
@@ -157,12 +158,13 @@ REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   10. teeTimeStart         — first tee time (HH:MM 24-hour, default 08:00 but ASK the user)
   11. teeTimeInterval      — minutes between consecutive tee times (default 12, user can override)
 
-OPTIONAL but useful: entryFee, description, sponsors, catering, budget, staffing, accessibility, notes, constraints.
+OPTIONAL but useful: entryFee, description, sponsors, staffing, accessibility, notes, constraints.
 
 CATERING WORKFLOW — Follow this sub-sequence when the user mentions catering or food:
   1. Set cateringEnabled = true.
   2. Ask for cateringBudget (REQUIRED once catering is enabled — a positive number in dollars).
-  3. Ask for cateringStyle (e.g. Buffet, Plated Meal, BBQ, Sandwich Station, Boxed Lunch).
+  3. Ask for cateringItems — prompt the user for specific example menu items the caterer should provide
+     (e.g. "burgers, hot dogs, garden salad, soft drinks, dessert table"). Store as a comma-separated string.
   4. Ask for cateringServingTime (e.g. post-round banquet, at the turn, before the round).
   5. Optionally ask for cateringDietaryNotes (any known dietary requirements).
 IMPORTANT: cateringBudget is REQUIRED once cateringEnabled is true — do not mark the event ready
@@ -234,13 +236,18 @@ Rules:
 - If eventType is "individual", set teamSize to 1 in the candidate object.
 - If the user mentions catering or food, set cateringEnabled to true and set
   clarifying_focus to "cateringBudget" if cateringBudget is still 0.
-- Always include cateringEnabled (boolean), cateringBudget (number), cateringStyle,
+- Always include cateringEnabled (boolean), cateringBudget (number), cateringItems,
   cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
 - If the user is asking for live weather, sunrise, or sunset information without changing
   tournament fields, set response_mode to "live_data_reply".
 - If the user is setting a tournament field based on sunrise or sunset, keep
   response_mode as "planner_workflow", preserve any explicit field updates in the
   candidate_tournament, and use tool_plan to describe the required MCP lookup.
+- If the user is asking a general question (e.g., requesting advice, suggestions,
+  recommendations, or information about catering, vendors, formats, rules, logistics,
+  or any other planning topic) rather than purely providing tournament field values,
+  set is_general_question to true. This allows the response to answer the question
+  using retrieved knowledge even when all required fields are already filled.
 - If the user greets you, responds casually, or asks if you are aware of a venue,
   treat that as normal conversation within planning, not as a reason to force a
   missing-field question.
@@ -297,8 +304,14 @@ Rules:
 - If responseMode is "live_data_reply", answer the live-data question directly and do
   not add an unrelated planning follow-up question.
 - If a live-data tool result is provided, use that data directly and do not guess.
-- If planning mode is ready for generation, the message must be exactly:
-  "Great — I have all the information I need. Click the green button on the right to start generating your documents."
+- If planning mode is ready for generation AND the user is NOT asking a general
+  question (is_general_question is false in the workflow analysis), the message must
+  be exactly: "Great — I have all the information I need. Click the green button on
+  the right to start generating your documents."
+- If planning mode is ready for generation AND the user IS asking a general question
+  (is_general_question is true), answer their question fully using retrieved knowledge
+  snippets, then end with a brief natural sentence such as "Whenever you're ready,
+  click the green button on the right to generate your documents."
 - Use retrieved knowledge only as guidance.
 """
 
@@ -322,7 +335,7 @@ EXAMPLE_EMPTY_TOURNAMENT = {
     "budget": 0,
     "cateringEnabled": False,
     "cateringBudget": 0,
-    "cateringStyle": "",
+    "cateringItems": "",
     "cateringServingTime": "",
     "cateringDietaryNotes": "",
     "staffing": {
@@ -420,7 +433,7 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
         "catering",
         "accessibility",
         "notes",
-        "cateringStyle",
+        "cateringItems",
         "cateringServingTime",
         "cateringDietaryNotes",
     ):
@@ -976,6 +989,7 @@ def _normalize_analysis_result(
         "user_requested_regeneration": bool(
             analysis.get("user_requested_regeneration", False)
         ),
+        "is_general_question": bool(analysis.get("is_general_question", False)),
         "tool_plan": _normalize_tool_plan(analysis.get("tool_plan")),
     }
 
@@ -1809,6 +1823,7 @@ async def handle_chat(
         analysis_result["response_mode"] != "live_data_reply"
         and phase == "planning"
         and ready_for_generation
+        and not analysis_result.get("is_general_question", False)
     ):
         final_message = READY_MESSAGE
 
