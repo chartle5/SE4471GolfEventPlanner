@@ -16,8 +16,6 @@ const STATUS_ROWS = [
   { key: 'entryFee',             label: 'Entry Fee',          required: false,                       fmt: v => v ? `$${v}` : '—' },
   { key: 'description',          label: 'Description',        required: false,                       fmt: v => v || '—' },
   { key: 'sponsors',             label: 'Sponsors',           required: false,                       fmt: v => Array.isArray(v) ? v.join(', ') || '—' : (v || '—') },
-  { key: 'catering',             label: 'Catering',           required: false,                       fmt: v => v || '—' },
-  { key: 'budget',               label: 'Budget',             required: false,                       fmt: v => v ? `$${v}` : '—' },
   { key: 'cateringEnabled',      label: 'Catering Enabled',   required: false,                       fmt: v => v ? 'Yes' : 'No' },
   { key: 'cateringBudget',       label: 'Catering Budget',    required: t => !!t.cateringEnabled,    fmt: v => v ? `$${v}` : '—' },
   { key: 'cateringStyle',        label: 'Catering Style',     required: false,                       fmt: v => v || '—' },
