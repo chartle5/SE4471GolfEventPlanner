@@ -1,8 +1,12 @@
 import asyncio
+import logging
 import math
 import os
+import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, List, Sequence
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Sequence
 
 from app.data.knowledge_documents import KNOWLEDGE_DOCUMENTS
 
@@ -16,6 +20,15 @@ LOCAL_EMBEDDING_MODEL = os.getenv(
     "RAG_LOCAL_EMBEDDING_MODEL",
     "sentence-transformers/all-MiniLM-L6-v2",
 )
+CORPUS_DIR = Path(
+    os.getenv(
+        "RAG_CORPUS_DIR",
+        str(Path(__file__).resolve().parents[1] / "data" / "corpus"),
+    )
+)
+SUPPORTED_CORPUS_SUFFIXES = {".md", ".markdown", ".txt"}
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -36,11 +49,31 @@ class RetrievedChunk:
     score: float
 
 
+@dataclass
+class SourceDocumentSet:
+    documents: List[Dict[str, str]]
+    source_kind: str
+    skipped_files: List[str]
+
+
 _INDEX_LOCK = asyncio.Lock()
 _MODEL_LOCK = asyncio.Lock()
 _CHUNK_INDEX: List[IndexedChunk] = []
 _INDEX_READY = False
 _EMBEDDING_MODEL: Any = None
+_RAG_STATUS: Dict[str, Any] = {
+    "state": "idle",
+    "ready": False,
+    "embedding_model": LOCAL_EMBEDDING_MODEL,
+    "corpus_dir": str(CORPUS_DIR),
+    "source_kind": "unknown",
+    "document_count": 0,
+    "chunk_count": 0,
+    "started_at": None,
+    "finished_at": None,
+    "last_error": "",
+    "skipped_files": [],
+}
 
 
 def _chunk_text(
@@ -68,10 +101,104 @@ def _chunk_text(
     return chunks
 
 
-def _base_chunks() -> List[IndexedChunk]:
-    chunks: List[IndexedChunk] = []
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "document"
 
-    for document in KNOWLEDGE_DOCUMENTS:
+
+def _timestamp_utc() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _update_rag_status(**updates: Any) -> None:
+    _RAG_STATUS.update(updates)
+
+
+def get_rag_status() -> Dict[str, Any]:
+    return {
+        **_RAG_STATUS,
+        "supported_suffixes": sorted(SUPPORTED_CORPUS_SUFFIXES),
+    }
+
+
+def _load_corpus_documents() -> SourceDocumentSet:
+    if not CORPUS_DIR.exists():
+        logger.warning(
+            "RAG corpus directory does not exist at %s. Falling back to bundled knowledge documents.",
+            CORPUS_DIR,
+        )
+        return SourceDocumentSet(documents=[], source_kind="corpus", skipped_files=[])
+
+    documents: List[dict[str, str]] = []
+    skipped_files: List[str] = []
+
+    for path in sorted(CORPUS_DIR.rglob("*")):
+        if not path.is_file():
+            continue
+
+        relative_path = path.relative_to(CORPUS_DIR)
+        suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_CORPUS_SUFFIXES:
+            skipped_files.append(f"{relative_path} (unsupported {suffix or 'extension'})")
+            continue
+
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            skipped_files.append(f"{relative_path} (read error: {exc})")
+            continue
+
+        if not content:
+            skipped_files.append(f"{relative_path} (empty)")
+            continue
+
+        document_id = _slugify(relative_path.with_suffix("").as_posix())
+        documents.append(
+            {
+                "id": document_id,
+                "title": path.stem,
+                "content": content,
+            }
+        )
+
+    if skipped_files:
+        logger.info("RAG corpus skipped files: %s", "; ".join(skipped_files))
+
+    if documents:
+        logger.info(
+            "RAG corpus loaded %s document(s) from %s.",
+            len(documents),
+            CORPUS_DIR,
+        )
+    else:
+        logger.warning(
+            "RAG corpus contained no usable .md/.markdown/.txt files in %s. Falling back to bundled knowledge documents.",
+            CORPUS_DIR,
+        )
+
+    return SourceDocumentSet(
+        documents=documents,
+        source_kind="corpus",
+        skipped_files=skipped_files,
+    )
+
+
+def _load_source_documents() -> SourceDocumentSet:
+    corpus_documents = _load_corpus_documents()
+    if corpus_documents.documents:
+        return corpus_documents
+    return SourceDocumentSet(
+        documents=KNOWLEDGE_DOCUMENTS,
+        source_kind="bundled",
+        skipped_files=corpus_documents.skipped_files,
+    )
+
+
+def _base_chunks() -> tuple[List[IndexedChunk], SourceDocumentSet]:
+    chunks: List[IndexedChunk] = []
+    source_documents = _load_source_documents()
+
+    for document in source_documents.documents:
         for index, text in enumerate(_chunk_text(document["content"]), start=1):
             chunks.append(
                 IndexedChunk(
@@ -83,7 +210,7 @@ def _base_chunks() -> List[IndexedChunk]:
                 )
             )
 
-    return chunks
+    return chunks, source_documents
 
 
 def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
@@ -145,13 +272,42 @@ async def _embed_texts(texts: Sequence[str]) -> List[List[float]]:
 async def _build_index() -> None:
     global _CHUNK_INDEX, _INDEX_READY
 
-    chunks = _base_chunks()
+    chunks, source_documents = _base_chunks()
+    _update_rag_status(
+        state="building",
+        ready=False,
+        source_kind=source_documents.source_kind,
+        document_count=len(source_documents.documents),
+        chunk_count=0,
+        started_at=_timestamp_utc(),
+        finished_at=None,
+        last_error="",
+        skipped_files=source_documents.skipped_files,
+    )
     if not chunks:
         _CHUNK_INDEX = []
         _INDEX_READY = True
+        logger.warning("RAG index build completed with 0 chunks.")
+        _update_rag_status(
+            state="ready",
+            ready=True,
+            finished_at=_timestamp_utc(),
+            chunk_count=0,
+        )
         return
 
-    embeddings = await _embed_texts([chunk.text for chunk in chunks])
+    try:
+        embeddings = await _embed_texts([chunk.text for chunk in chunks])
+    except Exception as exc:
+        _CHUNK_INDEX = []
+        _INDEX_READY = False
+        _update_rag_status(
+            state="error",
+            ready=False,
+            finished_at=_timestamp_utc(),
+            last_error=str(exc),
+        )
+        raise
 
     _CHUNK_INDEX = [
         IndexedChunk(
@@ -164,6 +320,18 @@ async def _build_index() -> None:
         for index, chunk in enumerate(chunks)
     ]
     _INDEX_READY = True
+    _update_rag_status(
+        state="ready",
+        ready=True,
+        chunk_count=len(_CHUNK_INDEX),
+        finished_at=_timestamp_utc(),
+        last_error="",
+    )
+    logger.info(
+        "RAG index ready with %s chunk(s) using embedding model %s.",
+        len(_CHUNK_INDEX),
+        LOCAL_EMBEDDING_MODEL,
+    )
 
 
 async def ensure_rag_index() -> None:
@@ -174,6 +342,26 @@ async def ensure_rag_index() -> None:
         if _INDEX_READY:
             return
         await _build_index()
+
+
+async def warm_rag_index() -> None:
+    if _INDEX_READY:
+        _update_rag_status(state="ready", ready=True)
+        return
+
+    logger.info("Starting background RAG warmup.")
+    try:
+        await ensure_rag_index()
+    except asyncio.CancelledError:
+        _update_rag_status(
+            state="idle",
+            ready=False,
+            finished_at=_timestamp_utc(),
+            last_error="Warmup cancelled during shutdown.",
+        )
+        raise
+    except Exception:
+        logger.exception("Background RAG warmup failed.")
 
 
 async def retrieve_relevant_chunks(
@@ -200,6 +388,24 @@ async def retrieve_relevant_chunks(
 
     ranked_chunks.sort(key=lambda chunk: chunk.score, reverse=True)
     return ranked_chunks[:top_k]
+
+
+async def get_rag_chunk_by_id(chunk_id: str) -> Dict[str, Any] | None:
+    target = str(chunk_id).strip()
+    if not target:
+        return None
+
+    await ensure_rag_index()
+    for chunk in _CHUNK_INDEX:
+        if chunk.chunk_id == target:
+            return {
+                "document_id": chunk.document_id,
+                "title": chunk.title,
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text,
+            }
+
+    return None
 
 
 def format_retrieved_context(chunks: Sequence[RetrievedChunk]) -> str:

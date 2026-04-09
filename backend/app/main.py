@@ -1,6 +1,8 @@
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import database
@@ -9,13 +11,22 @@ from app.routes.chat import router as chat_router
 from app.routes.generate import router as generate_router
 from app.routes.tournaments import router as tournaments_router
 from app.routes.register import router as register_router
+from app.services.rag import get_rag_chunk_by_id, get_rag_status, warm_rag_index
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Do not block app startup on database connectivity."""
-    yield
-    await database.close_mongo_connection()
+    """Start background warmups without blocking app startup."""
+    rag_warmup_task = asyncio.create_task(warm_rag_index())
+    app.state.rag_warmup_task = rag_warmup_task
+    try:
+        yield
+    finally:
+        if not rag_warmup_task.done():
+            rag_warmup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await rag_warmup_task
+        await database.close_mongo_connection()
 
 
 app = FastAPI(title="Golf Tournament Planner API", lifespan=lifespan)
@@ -38,3 +49,16 @@ app.include_router(register_router)
 @app.get("/")
 async def root():
     return {"status": "ok"}
+
+
+@app.get("/rag/status")
+async def rag_status():
+    return get_rag_status()
+
+
+@app.get("/rag/chunk/{chunk_id}")
+async def rag_chunk(chunk_id: str):
+    chunk = await get_rag_chunk_by_id(chunk_id)
+    if chunk is None:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+    return chunk

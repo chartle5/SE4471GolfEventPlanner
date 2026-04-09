@@ -134,6 +134,20 @@ class WorkflowFinalizerOutput(BaseModel):
     ready_for_generation: bool = False
     needs_regeneration: bool = False
 
+
+class PendingActionState(BaseModel):
+    active: bool = False
+    summary: str = ""
+    missing_requirements: List[str] = Field(default_factory=list)
+    tool_plan: ToolPlan = Field(default_factory=ToolPlan)
+
+
+class WorkingMemoryState(BaseModel):
+    active_goal: str = ""
+    open_question: str = ""
+    pending_action: PendingActionState = Field(default_factory=PendingActionState)
+    last_tool_result: str = ""
+
 PLANNING_SYSTEM_PROMPT = """
 You are an AI golf tournament planning assistant.
 
@@ -215,6 +229,9 @@ Your task is to analyze the latest user message, draft the safest possible updat
 tournament object, decide whether clarification is needed, and determine whether a
 live-data MCP tool is needed before the final answer is generated.
 
+You will also receive a working-memory object summarizing any still-open question
+or pending tool-dependent action from the previous turn.
+
 Return structured output with exactly these top-level fields:
   response_mode              - "planner_workflow" or "live_data_reply"
   workflow_action            - "update" or "clarify"
@@ -251,6 +268,12 @@ Rules:
 - If the user greets you, responds casually, or asks if you are aware of a venue,
   treat that as normal conversation within planning, not as a reason to force a
   missing-field question.
+- If working memory shows an open question or pending action, treat short replies
+  like "Chicago, Illinois", "June 10", or similar as likely answers to that open
+  question when they fit the context.
+- If the user provides the missing venue, location, or date needed to complete a
+  pending sunrise/sunset-based field update, preserve that update in the candidate
+  tournament and describe the required tool lookup in tool_plan so it can resume.
 - If the user both updates tournament state and asks a direct question, preserve the
   updates and leave enough information in the result for the final response to answer
   the question naturally.
@@ -292,6 +315,11 @@ Rules:
 - If tournament state changed, confirm the important updates in natural language.
 - If a live-data tool result is provided, explicitly say what was found and how it was
   used. For sunrise or sunset calculations, explain the calculation briefly.
+- If working memory shows a pending action that is still waiting on one missing input,
+  ask only for that missing input and keep the conversation focused on completing the
+  user's original request.
+- If the user just supplied information that answers the previous open question, make
+  that continuity obvious in your response instead of treating it like a brand-new topic.
 - If finalAction is "clarify", ask one focused clarification question while preserving
   any safe candidate updates already made.
 - If finalAction is "respond", do not sound like a checklist. After acknowledging and
@@ -462,8 +490,72 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
     return merged
 
 
-def _build_retrieval_query(user_message: str, tournament: Dict[str, Any]) -> str:
+def _normalize_working_memory(payload: Any) -> Dict[str, Any]:
+    raw = payload if isinstance(payload, dict) else {}
+    pending_raw = raw.get("pending_action", {})
+    if isinstance(pending_raw, BaseModel):
+        pending_raw = pending_raw.model_dump()
+    if not isinstance(pending_raw, dict):
+        pending_raw = {}
+
+    tool_plan = _normalize_tool_plan(pending_raw.get("tool_plan"))
+    missing_requirements = []
+    for item in pending_raw.get("missing_requirements", []):
+        value = str(item).strip().lower()
+        if value in {"venue", "location", "date"} and value not in missing_requirements:
+            missing_requirements.append(value)
+
+    active = bool(pending_raw.get("active")) and tool_plan.get("requires_tool")
+    if not active:
+        tool_plan = _normalize_tool_plan({})
+        missing_requirements = []
+
+    return {
+        "active_goal": str(raw.get("active_goal", "")).strip(),
+        "open_question": str(raw.get("open_question", "")).strip(),
+        "pending_action": {
+            "active": active,
+            "summary": str(pending_raw.get("summary", "")).strip(),
+            "missing_requirements": missing_requirements,
+            "tool_plan": tool_plan,
+        },
+        "last_tool_result": str(raw.get("last_tool_result", "")).strip(),
+    }
+
+
+def _summarize_working_memory(working_memory: Dict[str, Any]) -> str:
+    pending = working_memory.get("pending_action", {})
+    bits = []
+    if working_memory.get("active_goal"):
+        bits.append(f"goal={working_memory['active_goal']}")
+    if working_memory.get("open_question"):
+        bits.append(f"open_question={working_memory['open_question']}")
+    if pending.get("active"):
+        bits.append(f"pending={pending.get('summary', '')}")
+        if pending.get("missing_requirements"):
+            bits.append(
+                "missing=" + ",".join(str(item) for item in pending["missing_requirements"])
+            )
+    if working_memory.get("last_tool_result"):
+        bits.append(f"last_tool={working_memory['last_tool_result']}")
+    return " | ".join(bit for bit in bits if bit) or "empty"
+
+
+def _build_retrieval_query(
+    user_message: str,
+    tournament: Dict[str, Any],
+    working_memory: Optional[Dict[str, Any]] = None,
+) -> str:
     query_parts = [user_message.strip()]
+    working_memory = _normalize_working_memory(working_memory)
+
+    if working_memory.get("active_goal"):
+        query_parts.append(f'Active goal: {working_memory["active_goal"]}')
+    if working_memory.get("open_question"):
+        query_parts.append(f'Open question: {working_memory["open_question"]}')
+    pending = working_memory.get("pending_action", {})
+    if pending.get("active") and pending.get("summary"):
+        query_parts.append(f'Pending action: {pending["summary"]}')
 
     if tournament.get("format"):
         query_parts.append(f'Tournament format: {tournament["format"]}')
@@ -477,6 +569,30 @@ def _build_retrieval_query(user_message: str, tournament: Dict[str, Any]) -> str
         query_parts.append(f'Accessibility needs: {tournament["accessibility"]}')
 
     return "\n".join(part for part in query_parts if part)
+
+
+def _working_memory_block(working_memory: Dict[str, Any]) -> str:
+    return json.dumps(_normalize_working_memory(working_memory), indent=2)
+
+
+def _pending_action_summary(tool_plan: Dict[str, Any]) -> str:
+    purpose = str(tool_plan.get("tool_purpose", "none"))
+    if purpose == "set_tournament_time_from_sun_event":
+        target_field = str(tool_plan.get("target_field", "")).strip() or "teeTimeStart"
+        sun_event = str(tool_plan.get("sun_event", "sunrise")).strip() or "sunrise"
+        offset_minutes = int(tool_plan.get("offset_minutes", 0) or 0)
+        relation = "after" if offset_minutes >= 0 else "before"
+        offset_abs = abs(offset_minutes)
+        field_label = _human_field_label(target_field)
+        if offset_abs == 0:
+            return f"Set {field_label} to {sun_event}"
+        return f"Set {field_label} to {offset_abs} minutes {relation} {sun_event}"
+
+    if purpose == "weather_reply":
+        return "Answer the live weather question"
+    if purpose == "sun_time_reply":
+        return "Answer the live sunrise or sunset question"
+    return "Complete the pending live-data request"
 
 
 def _build_history_block(history: Optional[List[Dict[str, str]]]) -> str:
@@ -766,6 +882,7 @@ def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
             "chunk_id": chunk.chunk_id,
             "score": round(chunk.score, 3),
             "preview": _preview_text(chunk.text),
+            "content": chunk.text,
         }
         for chunk in chunks
     ]
@@ -1033,6 +1150,14 @@ def _build_weather_source(weather: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_id": "weather_live",
         "score": 1.0,
         "preview": " | ".join(preview_bits)[:160] or "Live weather lookup via local MCP server.",
+        "content": json.dumps(
+            {
+                "resolved_location": weather.get("resolved_location"),
+                "current_weather": weather.get("current_weather"),
+                "daily_forecast": (weather.get("daily_forecast") or [])[:1],
+            },
+            indent=2,
+        ),
     }
 
 
@@ -1054,6 +1179,17 @@ def _build_sun_times_source(sun_times: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_id": "weather_sun_times_live",
         "score": 1.0,
         "preview": " | ".join(preview_bits)[:160] or "Live sunrise and sunset lookup via local MCP server.",
+        "content": json.dumps(
+            {
+                "resolved_location": sun_times.get("resolved_location"),
+                "date": sun_times.get("date"),
+                "sunrise": sun_times.get("sunrise"),
+                "sunset": sun_times.get("sunset"),
+                "sunrise_hm": sun_times.get("sunrise_hm"),
+                "sunset_hm": sun_times.get("sunset_hm"),
+            },
+            indent=2,
+        ),
     }
 
 
@@ -1078,6 +1214,201 @@ def _resolve_tool_target_date(
         return _normalize_iso_date(str(candidate_tournament.get("date", "")).strip())
     return ""
 
+
+def _tool_missing_requirements(
+    tool_plan: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+) -> List[str]:
+    tool_name = str(tool_plan.get("tool_name", "none"))
+    if tool_name == "none" or not tool_plan.get("requires_tool"):
+        return []
+
+    missing: List[str] = []
+
+    if tool_name in {"get_weather_forecast", "get_sun_times_for_location"}:
+        location_query = _resolve_tool_location_query(tool_plan, candidate_tournament)
+        if not location_query:
+            missing.append("venue" if tool_plan.get("use_candidate_venue") else "location")
+
+    if tool_name == "get_sun_times_for_location":
+        target_date = _resolve_tool_target_date(tool_plan, candidate_tournament)
+        if not target_date:
+            missing.append("date")
+
+    return missing
+
+
+def _tool_follow_up_question(
+    tool_plan: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+    missing_requirements: List[str],
+) -> str:
+    purpose = str(tool_plan.get("tool_purpose", "none"))
+    sun_event = str(tool_plan.get("sun_event", "sunrise") or "sunrise")
+    date_label = str(candidate_tournament.get("date", "")).strip()
+    venue_label = str(candidate_tournament.get("venue", "")).strip()
+
+    if purpose == "set_tournament_time_from_sun_event":
+        if missing_requirements == ["venue"]:
+            if date_label:
+                return f"What venue or location should I use to calculate {sun_event} on {date_label}?"
+            return f"What venue or location should I use to calculate {sun_event} for that tee time?"
+        if missing_requirements == ["date"]:
+            if venue_label:
+                return f"What date should I use to calculate {sun_event} for {venue_label}?"
+            return f"What date should I use to calculate {sun_event} for that tee time?"
+        if set(missing_requirements) == {"venue", "date"}:
+            return f"What venue or location should I use, and what date should I calculate {sun_event} for?"
+
+    if str(tool_plan.get("tool_name", "none")) in {
+        "get_weather_forecast",
+        "get_weather_forecast_by_coordinates",
+    }:
+        if "location" in missing_requirements or "venue" in missing_requirements:
+            return "What location should I use for the live weather lookup?"
+
+    if missing_requirements:
+        if len(missing_requirements) == 1:
+            return f"What {missing_requirements[0]} should I use?"
+        return "What missing details should I use to finish that request?"
+
+    return ""
+
+
+def _build_tool_status_context(
+    tool_name: str,
+    tool_purpose: str,
+    status: str,
+    message: str = "",
+    missing_requirements: Optional[List[str]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> str:
+    payload = {
+        "tool_name": tool_name,
+        "tool_purpose": tool_purpose,
+        "status": status,
+        "message": message,
+        "missing_requirements": list(missing_requirements or []),
+    }
+    if extra:
+        payload.update(extra)
+    return json.dumps(payload, indent=2)
+
+
+def _should_resume_pending_action(
+    working_memory: Dict[str, Any],
+    original_tournament: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+    current_tool_plan: Dict[str, Any],
+) -> bool:
+    if current_tool_plan.get("requires_tool"):
+        return False
+
+    pending = (working_memory.get("pending_action") or {})
+    if not pending.get("active"):
+        return False
+
+    pending_tool_plan = pending.get("tool_plan") or {}
+    if not pending_tool_plan.get("requires_tool"):
+        return False
+
+    changed_fields = set(_build_changed_fields_payload(original_tournament, candidate_tournament).keys())
+    required_fields = {
+        "venue" if item == "location" else item
+        for item in (pending.get("missing_requirements") or [])
+    }
+    if required_fields and not changed_fields.intersection(required_fields):
+        return False
+
+    current_missing = set(_tool_missing_requirements(pending_tool_plan, candidate_tournament))
+    return not current_missing
+
+
+def _build_next_working_memory(
+    previous_working_memory: Dict[str, Any],
+    original_tournament: Dict[str, Any],
+    candidate_tournament: Dict[str, Any],
+    analysis_result: Dict[str, Any],
+    validation_result: Dict[str, Any],
+    tool_result: Dict[str, Any],
+) -> Dict[str, Any]:
+    working_memory = _normalize_working_memory(previous_working_memory)
+    pending = dict(working_memory.get("pending_action", {}))
+    pending_tool_plan = dict(pending.get("tool_plan", {}))
+    changed_fields = _build_changed_fields_payload(original_tournament, candidate_tournament)
+    tool_status = str(tool_result.get("tool_status", "skipped"))
+    tool_summary = ""
+
+    tool_payload = _safe_parse_tool_context(str(tool_result.get("tool_context", "")))
+    if tool_status == "success":
+        if tool_payload.get("applied_value"):
+            tool_summary = f"Applied {tool_payload['applied_value']} using live {tool_payload.get('tool_name', 'tool')} data"
+        elif tool_payload.get("resolved_location"):
+            resolved = tool_payload.get("resolved_location") or {}
+            display_name = resolved.get("display_name", "") if isinstance(resolved, dict) else ""
+            tool_summary = display_name or "Live data lookup completed"
+        pending = {
+            "active": False,
+            "summary": "",
+            "missing_requirements": [],
+            "tool_plan": _normalize_tool_plan({}),
+        }
+        working_memory["open_question"] = ""
+    elif tool_status == "pending_input":
+        missing_requirements = list(tool_result.get("missing_requirements") or [])
+        tool_plan = _normalize_tool_plan(tool_result.get("pending_tool_plan") or analysis_result.get("tool_plan"))
+        pending = {
+            "active": tool_plan.get("requires_tool", False),
+            "summary": _pending_action_summary(tool_plan),
+            "missing_requirements": missing_requirements,
+            "tool_plan": tool_plan,
+        }
+        working_memory["open_question"] = (
+            str(tool_result.get("follow_up_question", "")).strip()
+            or str(analysis_result.get("clarifying_question", "")).strip()
+            or str(validation_result.get("suggested_question", "")).strip()
+        )
+    else:
+        target_field = str(pending_tool_plan.get("target_field", "")).strip()
+        if target_field and target_field in changed_fields and tool_status != "success":
+            pending = {
+                "active": False,
+                "summary": "",
+                "missing_requirements": [],
+                "tool_plan": _normalize_tool_plan({}),
+            }
+            working_memory["open_question"] = ""
+        elif validation_result["final_action"] == "clarify":
+            working_memory["open_question"] = (
+                str(analysis_result.get("clarifying_question", "")).strip()
+                or str(validation_result.get("suggested_question", "")).strip()
+            )
+        elif not pending.get("active"):
+            working_memory["open_question"] = ""
+
+    working_memory["pending_action"] = pending
+    if pending.get("active"):
+        working_memory["active_goal"] = pending.get("summary", "")
+    elif changed_fields:
+        changed_phrases = [
+            _format_changed_field_statement(field, payload)
+            for field, payload in changed_fields.items()
+        ]
+        working_memory["active_goal"] = _join_phrases(changed_phrases)
+    elif validation_result["final_action"] == "clarify":
+        working_memory["active_goal"] = str(validation_result.get("primary_focus", "")).strip()
+    else:
+        working_memory["active_goal"] = ""
+
+    if tool_summary:
+        working_memory["last_tool_result"] = tool_summary
+    elif tool_status == "error":
+        working_memory["last_tool_result"] = str(tool_result.get("error_message", "")).strip()
+    elif tool_status == "pending_input" or tool_status == "skipped":
+        if not pending.get("active"):
+            working_memory["last_tool_result"] = ""
+
+    return _normalize_working_memory(working_memory)
 
 def _offset_clock_time(value: str, offset_minutes: int) -> str:
     base = datetime.strptime(value, "%H:%M")
@@ -1109,6 +1440,7 @@ async def _execute_tool_plan(
         _trace(request_id, "MCP SKIPPED", reason="no tool needed")
         return {
             "used": False,
+            "tool_status": "skipped",
             "candidate_tournament": candidate_tournament,
             "tool_context": "No live-data MCP tool was used.",
             "sources": [],
@@ -1128,11 +1460,20 @@ async def _execute_tool_plan(
             longitude = tool_plan.get("longitude")
             if latitude is None or longitude is None:
                 return {
-                    "direct_response": _build_tool_error_response(
+                    "used": False,
+                    "tool_status": "pending_input",
+                    "candidate_tournament": candidate_tournament,
+                    "tool_context": _build_tool_status_context(
+                        tool_name,
+                        tool_purpose,
+                        "pending_input",
                         "I can look up live weather, but I need valid coordinates first.",
-                        candidate_tournament,
-                        phase,
-                    )
+                        ["location"],
+                    ),
+                    "follow_up_question": "What coordinates should I use for the live weather lookup?",
+                    "missing_requirements": ["location"],
+                    "pending_tool_plan": tool_plan,
+                    "sources": [],
                 }
 
             weather = await get_weather_forecast_by_coordinates_via_mcp(
@@ -1161,6 +1502,7 @@ async def _execute_tool_plan(
             )
             return {
                 "used": True,
+                "tool_status": "success",
                 "candidate_tournament": candidate_tournament,
                 "tool_context": tool_context,
                 "sources": [_build_weather_source(weather)],
@@ -1169,12 +1511,26 @@ async def _execute_tool_plan(
         if tool_name == "get_weather_forecast":
             location_query = _resolve_tool_location_query(tool_plan, candidate_tournament)
             if not location_query:
+                missing_requirements = _tool_missing_requirements(tool_plan, candidate_tournament)
                 return {
-                    "direct_response": _build_tool_error_response(
+                    "used": False,
+                    "tool_status": "pending_input",
+                    "candidate_tournament": candidate_tournament,
+                    "tool_context": _build_tool_status_context(
+                        tool_name,
+                        tool_purpose,
+                        "pending_input",
                         "I can look up live weather, but I need a location first.",
+                        missing_requirements,
+                    ),
+                    "follow_up_question": _tool_follow_up_question(
+                        tool_plan,
                         candidate_tournament,
-                        phase,
-                    )
+                        missing_requirements,
+                    ),
+                    "missing_requirements": missing_requirements,
+                    "pending_tool_plan": tool_plan,
+                    "sources": [],
                 }
 
             weather = await get_weather_forecast_via_mcp(
@@ -1202,6 +1558,7 @@ async def _execute_tool_plan(
             )
             return {
                 "used": True,
+                "tool_status": "success",
                 "candidate_tournament": candidate_tournament,
                 "tool_context": tool_context,
                 "sources": [_build_weather_source(weather)],
@@ -1211,18 +1568,27 @@ async def _execute_tool_plan(
             location_query = _resolve_tool_location_query(tool_plan, candidate_tournament)
             target_date = _resolve_tool_target_date(tool_plan, candidate_tournament)
             if not location_query or not target_date:
-                missing_bits = []
-                if not location_query:
-                    missing_bits.append("the venue or location")
-                if not target_date:
-                    missing_bits.append("the date")
-                missing_text = " and ".join(missing_bits)
+                missing_requirements = _tool_missing_requirements(tool_plan, candidate_tournament)
+                follow_up_question = _tool_follow_up_question(
+                    tool_plan,
+                    candidate_tournament,
+                    missing_requirements,
+                )
                 return {
-                    "direct_response": _build_tool_error_response(
-                        f"I can use sunrise or sunset for that request, but I still need {missing_text}.",
-                        candidate_tournament,
-                        phase,
-                    )
+                    "used": False,
+                    "tool_status": "pending_input",
+                    "candidate_tournament": candidate_tournament,
+                    "tool_context": _build_tool_status_context(
+                        tool_name,
+                        tool_purpose,
+                        "pending_input",
+                        "I can use sunrise or sunset for that request, but I still need more information.",
+                        missing_requirements,
+                    ),
+                    "follow_up_question": follow_up_question,
+                    "missing_requirements": missing_requirements,
+                    "pending_tool_plan": tool_plan,
+                    "sources": [],
                 }
 
             sun_times = await get_sun_times_for_location_via_mcp(
@@ -1237,11 +1603,17 @@ async def _execute_tool_plan(
                 base_value = str(sun_times.get(f"{sun_event}_hm", "")).strip()
                 if not base_value:
                     return {
-                        "direct_response": _build_tool_error_response(
+                        "used": False,
+                        "tool_status": "error",
+                        "candidate_tournament": candidate_tournament,
+                        "tool_context": _build_tool_status_context(
+                            tool_name,
+                            tool_purpose,
+                            "error",
                             f"I found the location, but I couldn't determine the {sun_event} time for that date.",
-                            candidate_tournament,
-                            phase,
-                        )
+                        ),
+                        "error_message": f"I found the location, but I couldn't determine the {sun_event} time for that date.",
+                        "sources": [],
                     }
                 applied_value = _offset_clock_time(
                     base_value,
@@ -1277,17 +1649,24 @@ async def _execute_tool_plan(
             )
             return {
                 "used": True,
+                "tool_status": "success",
                 "candidate_tournament": _normalize_tournament(updated_tournament),
                 "tool_context": tool_context,
                 "sources": [_build_sun_times_source(sun_times)],
             }
 
         return {
-            "direct_response": _build_tool_error_response(
+            "used": False,
+            "tool_status": "error",
+            "candidate_tournament": candidate_tournament,
+            "tool_context": _build_tool_status_context(
+                tool_name,
+                tool_purpose,
+                "error",
                 "I identified a live-data request, but the requested tool is not supported yet.",
-                candidate_tournament,
-                phase,
-            )
+            ),
+            "error_message": "I identified a live-data request, but the requested tool is not supported yet.",
+            "sources": [],
         }
     except WeatherLocationResolutionError as exc:
         if tool_purpose == "set_tournament_time_from_sun_event":
@@ -1296,11 +1675,17 @@ async def _execute_tool_plan(
             message = f"I couldn't resolve that location for live weather lookup. {exc}"
         _trace(request_id, "MCP ERROR", tool=tool_name, error=message)
         return {
-            "direct_response": _build_tool_error_response(
+            "used": False,
+            "tool_status": "error",
+            "candidate_tournament": candidate_tournament,
+            "tool_context": _build_tool_status_context(
+                tool_name,
+                tool_purpose,
+                "error",
                 message,
-                candidate_tournament,
-                phase,
-            )
+            ),
+            "error_message": message,
+            "sources": [],
         }
     except WeatherMcpClientError as exc:
         message = (
@@ -1309,11 +1694,17 @@ async def _execute_tool_plan(
         )
         _trace(request_id, "MCP ERROR", tool=tool_name, error=message)
         return {
-            "direct_response": _build_tool_error_response(
+            "used": False,
+            "tool_status": "error",
+            "candidate_tournament": candidate_tournament,
+            "tool_context": _build_tool_status_context(
+                tool_name,
+                tool_purpose,
+                "error",
                 message,
-                candidate_tournament,
-                phase,
-            )
+            ),
+            "error_message": message,
+            "sources": [],
         }
 
 
@@ -1569,10 +1960,12 @@ async def handle_chat(
     tournament: Dict[str, Any],
     history: Optional[List[Dict[str, str]]] = None,
     phase: str = "planning",
+    working_memory: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     request_id = _short_request_id()
     phase = "refinement" if phase == "refinement" else "planning"
     tournament = _normalize_tournament(tournament)
+    working_memory = _normalize_working_memory(working_memory)
     analysis_failed = False
     analysis_failure_error = ""
     _trace(
@@ -1581,10 +1974,11 @@ async def handle_chat(
         phase=phase,
         user=_preview_text(user_message, 180),
         tournament=_summarize_tournament_state(tournament),
+        memory=_summarize_working_memory(working_memory),
     )
 
     retrieved_chunks: List[Any] = []
-    retrieval_query = _build_retrieval_query(user_message, tournament)
+    retrieval_query = _build_retrieval_query(user_message, tournament, working_memory)
     retrieval_error = None
 
     try:
@@ -1619,6 +2013,7 @@ async def handle_chat(
         f"{history_block}"
         f"[Latest user message]\n{user_message}\n\n"
         f"[Current tournament state]\n{json.dumps(tournament, indent=2)}\n\n"
+        f"[Working memory]\n{_working_memory_block(working_memory)}\n\n"
         f"[Retrieved knowledge snippets]\n{retrieved_context}\n"
     )
 
@@ -1646,6 +2041,7 @@ async def handle_chat(
             "clarifying_question": "",
             "candidate_tournament": tournament,
             "user_requested_regeneration": False,
+            "is_general_question": False,
             "tool_plan": _normalize_tool_plan({}),
         }
         _log_debug_block(
@@ -1662,29 +2058,58 @@ async def handle_chat(
         candidate_changes=_changed_fields_summary(tournament, analysis_result["candidate_tournament"]),
     )
 
+    if _should_resume_pending_action(
+        working_memory,
+        tournament,
+        analysis_result["candidate_tournament"],
+        analysis_result.get("tool_plan", {}),
+    ):
+        pending_tool_plan = _normalize_tool_plan(
+            ((working_memory.get("pending_action") or {}).get("tool_plan") or {})
+        )
+        analysis_result["tool_plan"] = pending_tool_plan
+        analysis_result["workflow_action"] = "update"
+        analysis_result["response_mode"] = (
+            "planner_workflow"
+            if pending_tool_plan.get("tool_purpose") == "set_tournament_time_from_sun_event"
+            else analysis_result["response_mode"]
+        )
+        analysis_result["reasoning_summary"] = (
+            analysis_result["reasoning_summary"] + " "
+            + "Resumed the pending tool-dependent request after receiving the missing details."
+        ).strip()
+        _trace(
+            request_id,
+            "PENDING ACTION RESUMED",
+            tool=_summarize_tool_plan(pending_tool_plan),
+            memory=_summarize_working_memory(working_memory),
+        )
+
     tool_result = await _execute_tool_plan(
         analysis_result.get("tool_plan", {}),
         analysis_result["candidate_tournament"],
         phase,
         request_id=request_id,
     )
-    if tool_result.get("direct_response") is not None:
-        direct_response = tool_result["direct_response"]
-        _trace(
-            request_id,
-            "RESPONSE",
-            message=_preview_text(str(direct_response.get("message", "")), 180),
-            changed_fields=_changed_fields_summary(tournament, direct_response.get("tournament", tournament)),
-            ready=direct_response.get("ready_for_generation", False),
-            regenerate=direct_response.get("needs_regeneration", False),
-        )
-        return tool_result["direct_response"]
 
     analysis_result["candidate_tournament"] = _normalize_tournament(
         tool_result.get("candidate_tournament", analysis_result["candidate_tournament"])
     )
     live_data_context = str(tool_result.get("tool_context", "No live-data MCP tool was used."))
     live_data_sources = list(tool_result.get("sources") or [])
+    tool_status = str(tool_result.get("tool_status", "skipped"))
+    if tool_status == "pending_input":
+        analysis_result["workflow_action"] = "clarify"
+        missing_requirements = list(tool_result.get("missing_requirements") or [])
+        analysis_result["clarifying_focus"] = (
+            ",".join(missing_requirements) if missing_requirements else analysis_result["clarifying_focus"]
+        )
+        analysis_result["clarifying_question"] = (
+            str(tool_result.get("follow_up_question", "")).strip()
+            or analysis_result["clarifying_question"]
+        )
+    elif tool_status == "error" and analysis_result["response_mode"] == "live_data_reply":
+        analysis_result["workflow_action"] = "update"
 
     if analysis_result["response_mode"] == "live_data_reply":
         validation_result = {
@@ -1722,6 +2147,14 @@ async def handle_chat(
         tournament,
         analysis_result["candidate_tournament"],
     )
+    updated_working_memory = _build_next_working_memory(
+        previous_working_memory=working_memory,
+        original_tournament=tournament,
+        candidate_tournament=analysis_result["candidate_tournament"],
+        analysis_result=analysis_result,
+        validation_result=validation_result,
+        tool_result=tool_result,
+    )
 
     finalizer_prompt = (
         f"Phase: {phase}\n"
@@ -1734,6 +2167,7 @@ async def handle_chat(
         f"{history_block}"
         f"[Latest user message]\n{user_message}\n\n"
         f"[Current tournament state]\n{json.dumps(tournament, indent=2)}\n\n"
+        f"[Working memory at start of turn]\n{_working_memory_block(working_memory)}\n\n"
         f"[Candidate tournament state]\n"
         f"{json.dumps(analysis_result['candidate_tournament'], indent=2)}\n\n"
         f"[State changes from this turn]\n"
@@ -1741,6 +2175,7 @@ async def handle_chat(
         f"[Workflow analysis]\n{json.dumps(analysis_result, indent=2)}\n\n"
         f"[Validation summary]\n{json.dumps(validation_result, indent=2)}\n\n"
         f"[Live data tool result]\n{live_data_context}\n\n"
+        f"[Working memory for next turn]\n{_working_memory_block(updated_working_memory)}\n\n"
         f"[Retrieved knowledge snippets]\n{retrieved_context}\n"
     )
     _trace(
@@ -1836,6 +2271,7 @@ async def handle_chat(
         "ready_for_generation": ready_for_generation,
         "needs_regeneration": validation_result["needs_regeneration"],
         "sources": live_data_sources + _serialize_sources(retrieved_chunks),
+        "working_memory": updated_working_memory,
     }
     _trace(
         request_id,
