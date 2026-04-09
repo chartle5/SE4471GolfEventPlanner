@@ -84,6 +84,180 @@ function getRagIndicator(status) {
   }
 }
 
+function getSourceContent(source) {
+  return (source.content || source.preview || 'No source text available.').trim()
+}
+
+function formatSourceLabel(source) {
+  if (typeof source.score === 'number') {
+    return `${source.title} · ${source.score.toFixed(3)}`
+  }
+  return source.title
+}
+
+function escapeHtml(value) {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;')
+}
+
+function openSourceInNewTab(source) {
+  const content = escapeHtml(getSourceContent(source))
+  const title = escapeHtml(source.title || 'Source Viewer')
+  const chunkId = escapeHtml(source.chunk_id || 'n/a')
+  const score = typeof source.score === 'number' ? source.score.toFixed(3) : 'n/a'
+  const newWindow = window.open('', '_blank', 'noopener,noreferrer')
+
+  if (!newWindow) return
+
+  newWindow.document.write(`<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>${title}</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 24px;
+        font-family: Georgia, "Times New Roman", serif;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      .meta {
+        margin-bottom: 16px;
+        font: 600 13px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #475569;
+      }
+      .chunk {
+        background: white;
+        border: 1px solid #cbd5e1;
+        border-radius: 12px;
+        padding: 20px;
+        white-space: pre-wrap;
+        line-height: 1.6;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>${title}</h1>
+    <div class="meta">Chunk: ${chunkId} | Similarity: ${score}</div>
+    <div class="chunk">${content}</div>
+  </body>
+</html>`)
+  newWindow.document.close()
+}
+
+function shouldFetchFullChunk(source) {
+  if (!source?.chunk_id) return false
+  if (source.chunk_id.startsWith('weather_')) return false
+  return true
+}
+
+function SourceViewerModal({ source, resolvedContent, loading, error, onClose }) {
+  if (!source) return null
+
+  const modalContent = (resolvedContent || getSourceContent(source)).trim()
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(15, 23, 42, 0.48)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+        zIndex: 50,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          width: 'min(860px, 100%)',
+          maxHeight: '85vh',
+          background: '#ffffff',
+          borderRadius: 16,
+          border: '1px solid #cbd5e1',
+          boxShadow: '0 24px 80px rgba(15, 23, 42, 0.24)',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+        }}
+      >
+        <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #e2e8f0' }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{source.title}</div>
+          <div style={{ marginTop: 8, fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
+            <span>Chunk: {source.chunk_id || 'n/a'}</span>
+            {typeof source.score === 'number' && <span> | Similarity: {source.score.toFixed(3)}</span>}
+          </div>
+        </div>
+
+        <div
+          style={{
+            padding: 20,
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+            lineHeight: 1.6,
+            fontSize: 15,
+            color: '#1e293b',
+            background: '#f8fafc',
+          }}
+        >
+          {loading ? 'Loading full chunk…' : error ? error : modalContent}
+        </div>
+
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: 16,
+            borderTop: '1px solid #e2e8f0',
+            background: '#ffffff',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => openSourceInNewTab({ ...source, content: modalContent })}
+            style={{
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              color: '#334155',
+              borderRadius: 8,
+              padding: '10px 14px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            Open In New Tab
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: 'none',
+              background: '#0f172a',
+              color: '#ffffff',
+              borderRadius: 8,
+              padding: '10px 16px',
+              cursor: 'pointer',
+              fontWeight: 600,
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function LiveStatusPanel({ tournament, readyForGeneration, generationDone, generating, onGenerate, ragStatus }) {
   const requiredFilled = STATUS_ROWS.filter(r => isRequired(r, tournament) && isFilled(r.key, tournament)).length
   const totalRequired = STATUS_ROWS.filter(r => isRequired(r, tournament)).length
@@ -192,6 +366,10 @@ export default function PlanTournament() {
   const [generating, setGenerating] = useState(false)
   const [savedReservationId, setSavedReservationId] = useState(null)
   const [workingMemory, setWorkingMemory] = useState({})
+  const [activeSource, setActiveSource] = useState(null)
+  const [activeSourceContent, setActiveSourceContent] = useState('')
+  const [activeSourceLoading, setActiveSourceLoading] = useState(false)
+  const [activeSourceError, setActiveSourceError] = useState('')
   const [ragStatus, setRagStatus] = useState({
     state: 'idle',
     ready: false,
@@ -243,6 +421,65 @@ export default function PlanTournament() {
       }
     }
   }, [])
+
+  useEffect(() => {
+    function handleEscape(event) {
+      if (event.key === 'Escape') {
+        setActiveSource(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleEscape)
+    return () => window.removeEventListener('keydown', handleEscape)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function loadFullChunk() {
+      if (!activeSource) {
+        setActiveSourceContent('')
+        setActiveSourceLoading(false)
+        setActiveSourceError('')
+        return
+      }
+
+      setActiveSourceContent(getSourceContent(activeSource))
+      setActiveSourceError('')
+
+      if (!shouldFetchFullChunk(activeSource)) {
+        setActiveSourceLoading(false)
+        return
+      }
+
+      setActiveSourceLoading(true)
+      try {
+        const response = await fetch(`http://localhost:8000/rag/chunk/${encodeURIComponent(activeSource.chunk_id)}`)
+        if (!response.ok) {
+          throw new Error(`Status ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (cancelled) return
+
+        setActiveSourceContent((data.text || '').trim() || getSourceContent(activeSource))
+      } catch {
+        if (cancelled) return
+
+        setActiveSourceError('Unable to load the full chunk from the backend.')
+      } finally {
+        if (!cancelled) {
+          setActiveSourceLoading(false)
+        }
+      }
+    }
+
+    loadFullChunk()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeSource])
 
   async function callGenerate(currentTournament) {
     try {
@@ -460,9 +697,33 @@ export default function PlanTournament() {
                   {msg.sources?.length > 0 && (
                     <div
                       className="small muted"
-                      style={{ marginTop: 8 }}
+                      style={{
+                        marginTop: 8,
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: 6,
+                      }}
                     >
-                      Sources: {msg.sources.map((source) => source.title).join(' • ')}
+                      <span>Sources:</span>
+                      {msg.sources.map((source, sourceIndex) => (
+                        <button
+                          key={`${source.chunk_id}-${sourceIndex}`}
+                          type="button"
+                          onClick={() => setActiveSource(source)}
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: 999,
+                            background: '#f3f4f6',
+                            border: '1px solid #d1d5db',
+                            cursor: 'pointer',
+                            color: '#475569',
+                            fontSize: 12,
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {formatSourceLabel(source)}
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -529,6 +790,13 @@ export default function PlanTournament() {
           ragStatus={ragStatus}
         />
       </div>
+      <SourceViewerModal
+        source={activeSource}
+        resolvedContent={activeSourceContent}
+        loading={activeSourceLoading}
+        error={activeSourceError}
+        onClose={() => setActiveSource(null)}
+      />
     </div>
   )
 }

@@ -390,6 +390,24 @@ async def retrieve_relevant_chunks(
     return ranked_chunks[:top_k]
 
 
+async def get_rag_chunk_by_id(chunk_id: str) -> Dict[str, Any] | None:
+    target = str(chunk_id).strip()
+    if not target:
+        return None
+
+    await ensure_rag_index()
+    for chunk in _CHUNK_INDEX:
+        if chunk.chunk_id == target:
+            return {
+                "document_id": chunk.document_id,
+                "title": chunk.title,
+                "chunk_id": chunk.chunk_id,
+                "text": chunk.text,
+            }
+
+    return None
+
+
 def format_retrieved_context(chunks: Sequence[RetrievedChunk]) -> str:
     if not chunks:
         return "No retrieved knowledge snippets."

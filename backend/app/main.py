@@ -2,6 +2,7 @@ import asyncio
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app import database
@@ -10,7 +11,7 @@ from app.routes.chat import router as chat_router
 from app.routes.generate import router as generate_router
 from app.routes.tournaments import router as tournaments_router
 from app.routes.register import router as register_router
-from app.services.rag import get_rag_status, warm_rag_index
+from app.services.rag import get_rag_chunk_by_id, get_rag_status, warm_rag_index
 
 
 @asynccontextmanager
@@ -53,3 +54,11 @@ async def root():
 @app.get("/rag/status")
 async def rag_status():
     return get_rag_status()
+
+
+@app.get("/rag/chunk/{chunk_id}")
+async def rag_chunk(chunk_id: str):
+    chunk = await get_rag_chunk_by_id(chunk_id)
+    if chunk is None:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+    return chunk

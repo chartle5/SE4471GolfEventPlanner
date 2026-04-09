@@ -882,6 +882,7 @@ def _serialize_sources(chunks: List[Any]) -> List[Dict[str, Any]]:
             "chunk_id": chunk.chunk_id,
             "score": round(chunk.score, 3),
             "preview": _preview_text(chunk.text),
+            "content": chunk.text,
         }
         for chunk in chunks
     ]
@@ -1149,6 +1150,14 @@ def _build_weather_source(weather: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_id": "weather_live",
         "score": 1.0,
         "preview": " | ".join(preview_bits)[:160] or "Live weather lookup via local MCP server.",
+        "content": json.dumps(
+            {
+                "resolved_location": weather.get("resolved_location"),
+                "current_weather": weather.get("current_weather"),
+                "daily_forecast": (weather.get("daily_forecast") or [])[:1],
+            },
+            indent=2,
+        ),
     }
 
 
@@ -1170,6 +1179,17 @@ def _build_sun_times_source(sun_times: Dict[str, Any]) -> Dict[str, Any]:
         "chunk_id": "weather_sun_times_live",
         "score": 1.0,
         "preview": " | ".join(preview_bits)[:160] or "Live sunrise and sunset lookup via local MCP server.",
+        "content": json.dumps(
+            {
+                "resolved_location": sun_times.get("resolved_location"),
+                "date": sun_times.get("date"),
+                "sunrise": sun_times.get("sunrise"),
+                "sunset": sun_times.get("sunset"),
+                "sunrise_hm": sun_times.get("sunrise_hm"),
+                "sunset_hm": sun_times.get("sunset_hm"),
+            },
+            indent=2,
+        ),
     }
 
 

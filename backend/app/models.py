@@ -23,6 +23,7 @@ class ChatSource(BaseModel):
     chunk_id: str
     score: float
     preview: str
+    content: str = ""
 
 
 class ChatResponse(BaseModel):
