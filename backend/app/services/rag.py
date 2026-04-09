@@ -1,7 +1,10 @@
 import asyncio
+import logging
 import math
 import os
+import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Sequence
 
 from app.data.knowledge_documents import KNOWLEDGE_DOCUMENTS
@@ -16,6 +19,15 @@ LOCAL_EMBEDDING_MODEL = os.getenv(
     "RAG_LOCAL_EMBEDDING_MODEL",
     "sentence-transformers/all-MiniLM-L6-v2",
 )
+CORPUS_DIR = Path(
+    os.getenv(
+        "RAG_CORPUS_DIR",
+        str(Path(__file__).resolve().parents[1] / "data" / "corpus"),
+    )
+)
+SUPPORTED_CORPUS_SUFFIXES = {".md", ".markdown", ".txt"}
+
+logger = logging.getLogger("uvicorn.error")
 
 
 @dataclass
@@ -68,10 +80,80 @@ def _chunk_text(
     return chunks
 
 
+def _slugify(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return slug or "document"
+
+
+def _load_corpus_documents() -> List[dict[str, str]]:
+    if not CORPUS_DIR.exists():
+        logger.warning(
+            "RAG corpus directory does not exist at %s. Falling back to bundled knowledge documents.",
+            CORPUS_DIR,
+        )
+        return []
+
+    documents: List[dict[str, str]] = []
+    skipped_files: List[str] = []
+
+    for path in sorted(CORPUS_DIR.rglob("*")):
+        if not path.is_file():
+            continue
+
+        relative_path = path.relative_to(CORPUS_DIR)
+        suffix = path.suffix.lower()
+        if suffix not in SUPPORTED_CORPUS_SUFFIXES:
+            skipped_files.append(f"{relative_path} (unsupported {suffix or 'extension'})")
+            continue
+
+        try:
+            content = path.read_text(encoding="utf-8").strip()
+        except (OSError, UnicodeDecodeError) as exc:
+            skipped_files.append(f"{relative_path} (read error: {exc})")
+            continue
+
+        if not content:
+            skipped_files.append(f"{relative_path} (empty)")
+            continue
+
+        document_id = _slugify(relative_path.with_suffix("").as_posix())
+        documents.append(
+            {
+                "id": document_id,
+                "title": path.stem,
+                "content": content,
+            }
+        )
+
+    if skipped_files:
+        logger.info("RAG corpus skipped files: %s", "; ".join(skipped_files))
+
+    if documents:
+        logger.info(
+            "RAG corpus loaded %s document(s) from %s.",
+            len(documents),
+            CORPUS_DIR,
+        )
+    else:
+        logger.warning(
+            "RAG corpus contained no usable .md/.markdown/.txt files in %s. Falling back to bundled knowledge documents.",
+            CORPUS_DIR,
+        )
+
+    return documents
+
+
+def _load_source_documents() -> List[dict[str, str]]:
+    corpus_documents = _load_corpus_documents()
+    if corpus_documents:
+        return corpus_documents
+    return KNOWLEDGE_DOCUMENTS
+
+
 def _base_chunks() -> List[IndexedChunk]:
     chunks: List[IndexedChunk] = []
 
-    for document in KNOWLEDGE_DOCUMENTS:
+    for document in _load_source_documents():
         for index, text in enumerate(_chunk_text(document["content"]), start=1):
             chunks.append(
                 IndexedChunk(
@@ -149,6 +231,7 @@ async def _build_index() -> None:
     if not chunks:
         _CHUNK_INDEX = []
         _INDEX_READY = True
+        logger.warning("RAG index build completed with 0 chunks.")
         return
 
     embeddings = await _embed_texts([chunk.text for chunk in chunks])
@@ -164,6 +247,11 @@ async def _build_index() -> None:
         for index, chunk in enumerate(chunks)
     ]
     _INDEX_READY = True
+    logger.info(
+        "RAG index ready with %s chunk(s) using embedding model %s.",
+        len(_CHUNK_INDEX),
+        LOCAL_EMBEDDING_MODEL,
+    )
 
 
 async def ensure_rag_index() -> None:
