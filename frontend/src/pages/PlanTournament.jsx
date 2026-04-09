@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { tournamentState as initial } from '../data/tournament'
@@ -38,9 +38,56 @@ function isFilled(key, tournament) {
   return !!v
 }
 
-function LiveStatusPanel({ tournament, readyForGeneration, generationDone, generating, onGenerate }) {
+function getRagIndicator(status) {
+  const docCount = Number(status?.document_count || 0)
+  const chunkCount = Number(status?.chunk_count || 0)
+  const sourceLabel = status?.source_kind === 'bundled' ? 'bundled library' : 'corpus'
+
+  if (status?.state === 'ready' && status?.ready) {
+    return {
+      label: 'Planning Library Ready',
+      background: '#dcfce7',
+      border: '#86efac',
+      color: '#166534',
+      detail: `${docCount} docs indexed into ${chunkCount} chunks from the ${sourceLabel}.`,
+    }
+  }
+
+  if (status?.state === 'building') {
+    return {
+      label: 'Planning Library Indexing…',
+      background: '#fef3c7',
+      border: '#fcd34d',
+      color: '#92400e',
+      detail: docCount > 0
+        ? `Preparing embeddings for ${docCount} docs so retrieval is ready before your first planning-heavy turn.`
+        : 'Preparing the retrieval index in the background.',
+    }
+  }
+
+  if (status?.state === 'error') {
+    return {
+      label: 'Planning Library Unavailable',
+      background: '#fee2e2',
+      border: '#fca5a5',
+      color: '#991b1b',
+      detail: status?.last_error || 'The backend could not finish the retrieval warmup.',
+    }
+  }
+
+  return {
+    label: 'Planning Library Starting…',
+    background: '#e0f2fe',
+    border: '#7dd3fc',
+    color: '#075985',
+    detail: 'Waiting for the backend to begin indexing the planning corpus.',
+  }
+}
+
+function LiveStatusPanel({ tournament, readyForGeneration, generationDone, generating, onGenerate, ragStatus }) {
   const requiredFilled = STATUS_ROWS.filter(r => isRequired(r, tournament) && isFilled(r.key, tournament)).length
   const totalRequired = STATUS_ROWS.filter(r => isRequired(r, tournament)).length
+  const ragIndicator = getRagIndicator(ragStatus)
 
   return (
     <div style={{
@@ -59,6 +106,21 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
       </div>
       <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
         {requiredFilled} / {totalRequired} required fields collected
+      </div>
+
+      <div style={{
+        marginBottom: 12,
+        padding: '10px 12px',
+        borderRadius: 8,
+        background: ragIndicator.background,
+        border: `1px solid ${ragIndicator.border}`,
+      }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: ragIndicator.color }}>
+          {ragIndicator.label}
+        </div>
+        <div style={{ fontSize: 12, color: '#4b5563', marginTop: 4, lineHeight: 1.35 }}>
+          {ragIndicator.detail}
+        </div>
       </div>
 
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -129,6 +191,57 @@ export default function PlanTournament() {
   const [generationDone, setGenerationDone] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [savedReservationId, setSavedReservationId] = useState(null)
+  const [ragStatus, setRagStatus] = useState({
+    state: 'idle',
+    ready: false,
+    document_count: 0,
+    chunk_count: 0,
+    last_error: '',
+    source_kind: 'unknown',
+  })
+
+  useEffect(() => {
+    let cancelled = false
+    let timerId = null
+
+    async function pollRagStatus() {
+      let nextDelay = 5000
+      try {
+        const response = await fetch('http://localhost:8000/rag/status')
+        if (!response.ok) {
+          throw new Error(`Status ${response.status}`)
+        }
+
+        const data = await response.json()
+        if (cancelled) return
+
+        setRagStatus(data)
+        nextDelay = data.ready ? 30000 : 2000
+      } catch {
+        if (cancelled) return
+
+        setRagStatus((prev) => ({
+          ...prev,
+          state: 'error',
+          ready: false,
+          last_error: 'Unable to reach the backend RAG status endpoint.',
+        }))
+      } finally {
+        if (!cancelled) {
+          timerId = window.setTimeout(pollRagStatus, nextDelay)
+        }
+      }
+    }
+
+    pollRagStatus()
+
+    return () => {
+      cancelled = true
+      if (timerId !== null) {
+        window.clearTimeout(timerId)
+      }
+    }
+  }, [])
 
   async function callGenerate(currentTournament) {
     try {
@@ -407,6 +520,7 @@ export default function PlanTournament() {
           generationDone={generationDone}
           generating={generating}
           onGenerate={handleGenerate}
+          ragStatus={ragStatus}
         />
       </div>
     </div>
