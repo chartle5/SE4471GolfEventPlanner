@@ -159,7 +159,7 @@ You will be given:
 REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   1.  name                 — tournament name
   2.  date                 — event start date (first day)
-  3.  venue                — course / location name
+  3.  venue                — course / location name (MUST be a real, existing golf course)
   4.  format               — play format (e.g. scramble, stroke play, match play)
   5.  numberOfDays         — how many days the tournament runs (integer >= 1)
   6.  playerCount          — total number of players competing (must be > 0)
@@ -171,6 +171,13 @@ REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   9.  registrationDeadline — final date by which players must register (must be before the event date)
   10. teeTimeStart         — first tee time (HH:MM 24-hour, default 08:00 but ASK the user)
   11. teeTimeInterval      — minutes between consecutive tee times (default 12, user can override)
+
+VENUE VALIDATION — The venue MUST be a real, existing golf course:
+- If the user provides a venue name you don't recognize as a real golf course, ask for confirmation
+- Common golf course names include: Augusta National, Pebble Beach, St. Andrews, Pine Valley, etc.
+- If unsure about a venue name, ask the user to confirm it's a real golf course
+- Do not accept generic locations like "city park", "backyard", or non-golf venues
+- Always verify venue is golf-related before proceeding
 
 OPTIONAL but useful: entryFee, description, sponsors, staffing, accessibility, notes, constraints.
 
@@ -256,6 +263,10 @@ Rules:
 - Always include cateringEnabled (boolean), cateringBudget (number), cateringItems,
   cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
 - If the user is asking for live weather, sunrise, or sunset information without changing
+  tournament fields, set response_mode to "live_data_reply".
+- If the user is asking for golf course verification or information about a specific
+  golf course without changing tournament fields, set response_mode to "live_data_reply".
+- If the user is asking to search for golf courses in an area without changing
   tournament fields, set response_mode to "live_data_reply".
 - If the user is setting a tournament field based on sunrise or sunset, keep
   response_mode as "planner_workflow", preserve any explicit field updates in the
@@ -592,6 +603,14 @@ def _pending_action_summary(tool_plan: Dict[str, Any]) -> str:
         return "Answer the live weather question"
     if purpose == "sun_time_reply":
         return "Answer the live sunrise or sunset question"
+    if purpose == "verify_course_reply":
+        return "Answer the golf course verification question"
+    if purpose == "search_courses_reply":
+        return "Answer the golf course search question"
+    if purpose == "course_details_reply":
+        return "Provide detailed golf course information"
+    if purpose == "nearby_courses_reply":
+        return "Find golf courses near a location"
     return "Complete the pending live-data request"
 
 
@@ -605,6 +624,81 @@ def _build_history_block(history: Optional[List[Dict[str, str]]]) -> str:
         lines.append(f"{label}: {msg['content']}")
 
     return "[Conversation so far]\n" + "\n".join(lines) + "\n\n"
+
+
+def _is_direct_field_update(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    if re.search(r"\b(set|change|update|add|remove|use|make)\b.*\b(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|notes|description)\b", text):
+        return True
+
+    if re.search(r"\b(the )?(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|description)\b.*\b(is|are|will be|should be|must be|should|must)\b", text):
+        return True
+
+    if re.search(r"\bmy tournament name is\b|\bit's called\b|\bwe're doing\b|\bwe will have\b|\bwe have\b", text):
+        return True
+
+    if "?" not in text and re.search(r"\b(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|description)\b", text):
+        return True
+
+    return False
+
+
+def _is_general_reference_question(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    question_indicators = [
+        r"\bwhat\b",
+        r"\bwhy\b",
+        r"\bhow\b",
+        r"\bwhich\b",
+        r"\bwhen\b",
+        r"\bwhere\b",
+        r"\brecommend\b",
+        r"\bsuggest\b",
+        r"\badvice\b",
+        r"\bbest\b",
+        r"\bhelp\b",
+        r"\bexample\b",
+        r"\bguide\b",
+        r"\bshould i\b",
+        r"\bcould i\b",
+        r"\bcan i\b",
+        r"\bdo you\b",
+        r"\bdoes this\b",
+    ]
+
+    if re.search(r"\?", text):
+        return True
+
+    for pattern in question_indicators:
+        if re.search(pattern, text):
+            return True
+
+    return False
+
+
+def _should_use_rag(
+    user_message: str,
+    tournament: Dict[str, Any],
+    working_memory: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if _is_direct_field_update(user_message):
+        return False
+
+    if _is_general_reference_question(user_message):
+        return True
+
+    if working_memory:
+        pending = (working_memory.get("pending_action") or {}).get("active")
+        if pending:
+            return False
+
+    return False
 
 
 def _phase_instruction_block(phase: str) -> str:
@@ -1707,6 +1801,20 @@ async def _execute_tool_plan(
             "sources": [],
         }
 
+        return {
+            "used": False,
+            "tool_status": "error",
+            "candidate_tournament": candidate_tournament,
+            "tool_context": _build_tool_status_context(
+                tool_name,
+                tool_purpose,
+                "error",
+                f"Unsupported tool: {tool_name}",
+            ),
+            "error_message": f"Unsupported tool: {tool_name}",
+            "sources": [],
+        }
+
 
 def _parse_date_for_comparison(value: str) -> Optional[date]:
     if not value or not value.strip():
@@ -1977,26 +2085,32 @@ async def handle_chat(
         memory=_summarize_working_memory(working_memory),
     )
 
-    retrieved_chunks: List[Any] = []
+    use_rag = _should_use_rag(user_message, tournament, working_memory)
     retrieval_query = _build_retrieval_query(user_message, tournament, working_memory)
+    retrieved_chunks: List[Any] = []
     retrieval_error = None
 
-    try:
-        retrieved_chunks = await asyncio.wait_for(
-            retrieve_relevant_chunks(retrieval_query),
-            timeout=RAG_RETRIEVAL_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        retrieval_error = (
-            "RAG retrieval timed out before the local embedding model became ready."
-        )
-        retrieved_chunks = []
-    except Exception as exc:
-        retrieval_error = str(exc)
-        retrieved_chunks = []
+    if use_rag:
+        try:
+            retrieved_chunks = await asyncio.wait_for(
+                retrieve_relevant_chunks(retrieval_query),
+                timeout=RAG_RETRIEVAL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            retrieval_error = (
+                "RAG retrieval timed out before the local embedding model became ready."
+            )
+            retrieved_chunks = []
+        except Exception as exc:
+            retrieval_error = str(exc)
+            retrieved_chunks = []
+    else:
+        retrieval_query = ""
+
     _trace(
         request_id,
         "RETRIEVAL",
+        rag_used=use_rag,
         chunks=len(retrieved_chunks),
         error=retrieval_error or "",
     )

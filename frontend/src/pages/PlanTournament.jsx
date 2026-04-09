@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { tournamentState as initial } from '../data/tournament'
@@ -350,6 +350,7 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
 export default function PlanTournament() {
   const navigate = useNavigate()
   const { authHeaders } = useAuth()
+  const messagesContainerRef = useRef(null)
   const [tournament, setTournament] = useState(initial)
   const [messages, setMessages] = useState([
     {
@@ -432,6 +433,20 @@ export default function PlanTournament() {
     window.addEventListener('keydown', handleEscape)
     return () => window.removeEventListener('keydown', handleEscape)
   }, [])
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [messages])
+
+  // Auto-scroll to bottom when user is typing
+  useEffect(() => {
+    if (messagesContainerRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight
+    }
+  }, [input])
 
   useEffect(() => {
     let cancelled = false
@@ -661,6 +676,7 @@ export default function PlanTournament() {
 
           {/* Message thread */}
           <div
+            ref={messagesContainerRef}
             style={{
               border: '1px solid #ddd',
               borderRadius: 8,

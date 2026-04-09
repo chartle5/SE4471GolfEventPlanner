@@ -11,6 +11,7 @@ export default function TournamentDetail() {
   const [liveData, setLiveData] = useState(null)
   const [notFound, setNotFound] = useState(false)
 
+  
   // Shared modal state
   const [modal, setModal] = useState(null) // 'invite'|'schedule'|'ruleSheet'|'fnb'|'clubSheet'|'registrants'
   const [emails, setEmails] = useState('')
