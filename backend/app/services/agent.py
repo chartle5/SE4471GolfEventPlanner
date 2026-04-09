@@ -607,6 +607,81 @@ def _build_history_block(history: Optional[List[Dict[str, str]]]) -> str:
     return "[Conversation so far]\n" + "\n".join(lines) + "\n\n"
 
 
+def _is_direct_field_update(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    if re.search(r"\b(set|change|update|add|remove|use|make)\b.*\b(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|notes|description)\b", text):
+        return True
+
+    if re.search(r"\b(the )?(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|description)\b.*\b(is|are|will be|should be|must be|should|must)\b", text):
+        return True
+
+    if re.search(r"\bmy tournament name is\b|\bit's called\b|\bwe're doing\b|\bwe will have\b|\bwe have\b", text):
+        return True
+
+    if "?" not in text and re.search(r"\b(venue|date|format|player count|team size|registration deadline|tee time|entry fee|catering|staffing|budget|sponsors|accessibility|description)\b", text):
+        return True
+
+    return False
+
+
+def _is_general_reference_question(message: str) -> bool:
+    text = message.strip().lower()
+    if not text:
+        return False
+
+    question_indicators = [
+        r"\bwhat\b",
+        r"\bwhy\b",
+        r"\bhow\b",
+        r"\bwhich\b",
+        r"\bwhen\b",
+        r"\bwhere\b",
+        r"\brecommend\b",
+        r"\bsuggest\b",
+        r"\badvice\b",
+        r"\bbest\b",
+        r"\bhelp\b",
+        r"\bexample\b",
+        r"\bguide\b",
+        r"\bshould i\b",
+        r"\bcould i\b",
+        r"\bcan i\b",
+        r"\bdo you\b",
+        r"\bdoes this\b",
+    ]
+
+    if re.search(r"\?", text):
+        return True
+
+    for pattern in question_indicators:
+        if re.search(pattern, text):
+            return True
+
+    return False
+
+
+def _should_use_rag(
+    user_message: str,
+    tournament: Dict[str, Any],
+    working_memory: Optional[Dict[str, Any]] = None,
+) -> bool:
+    if _is_direct_field_update(user_message):
+        return False
+
+    if _is_general_reference_question(user_message):
+        return True
+
+    if working_memory:
+        pending = (working_memory.get("pending_action") or {}).get("active")
+        if pending:
+            return False
+
+    return False
+
+
 def _phase_instruction_block(phase: str) -> str:
     return PLANNING_SYSTEM_PROMPT if phase == "planning" else REFINEMENT_SYSTEM_PROMPT
 
@@ -1977,26 +2052,32 @@ async def handle_chat(
         memory=_summarize_working_memory(working_memory),
     )
 
-    retrieved_chunks: List[Any] = []
+    use_rag = _should_use_rag(user_message, tournament, working_memory)
     retrieval_query = _build_retrieval_query(user_message, tournament, working_memory)
+    retrieved_chunks: List[Any] = []
     retrieval_error = None
 
-    try:
-        retrieved_chunks = await asyncio.wait_for(
-            retrieve_relevant_chunks(retrieval_query),
-            timeout=RAG_RETRIEVAL_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        retrieval_error = (
-            "RAG retrieval timed out before the local embedding model became ready."
-        )
-        retrieved_chunks = []
-    except Exception as exc:
-        retrieval_error = str(exc)
-        retrieved_chunks = []
+    if use_rag:
+        try:
+            retrieved_chunks = await asyncio.wait_for(
+                retrieve_relevant_chunks(retrieval_query),
+                timeout=RAG_RETRIEVAL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            retrieval_error = (
+                "RAG retrieval timed out before the local embedding model became ready."
+            )
+            retrieved_chunks = []
+        except Exception as exc:
+            retrieval_error = str(exc)
+            retrieved_chunks = []
+    else:
+        retrieval_query = ""
+
     _trace(
         request_id,
         "RETRIEVAL",
+        rag_used=use_rag,
         chunks=len(retrieved_chunks),
         error=retrieval_error or "",
     )
