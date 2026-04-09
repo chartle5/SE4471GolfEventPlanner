@@ -3,6 +3,7 @@ Tournament persistence, schedule management, email sending, and finalization.
 All routes are prefixed with /tournaments.
 """
 
+import logging
 import os
 from typing import Annotated
 
@@ -40,6 +41,11 @@ async def save_tournament(payload: SaveTournamentRequest, db: DB, current_user: 
     result = await crud.create_tournament(
         db, payload.tournament, payload.schedule, payload.brochure,
         user_id=current_user["user_id"],
+    )
+    print(
+        f"\n📋 Tournament saved — Registration token: {result['registration_token']}\n"
+        f"   ./register_test_players.sh  →  token: {result['registration_token']}\n",
+        flush=True,
     )
     return result
 
