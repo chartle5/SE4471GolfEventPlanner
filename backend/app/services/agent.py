@@ -159,7 +159,7 @@ You will be given:
 REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   1.  name                 — tournament name
   2.  date                 — event start date (first day)
-  3.  venue                — course / location name
+  3.  venue                — course / location name (MUST be a real, existing golf course)
   4.  format               — play format (e.g. scramble, stroke play, match play)
   5.  numberOfDays         — how many days the tournament runs (integer >= 1)
   6.  playerCount          — total number of players competing (must be > 0)
@@ -171,6 +171,13 @@ REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   9.  registrationDeadline — final date by which players must register (must be before the event date)
   10. teeTimeStart         — first tee time (HH:MM 24-hour, default 08:00 but ASK the user)
   11. teeTimeInterval      — minutes between consecutive tee times (default 12, user can override)
+
+VENUE VALIDATION — The venue MUST be a real, existing golf course:
+- If the user provides a venue name you don't recognize as a real golf course, ask for confirmation
+- Common golf course names include: Augusta National, Pebble Beach, St. Andrews, Pine Valley, etc.
+- If unsure about a venue name, ask the user to confirm it's a real golf course
+- Do not accept generic locations like "city park", "backyard", or non-golf venues
+- Always verify venue is golf-related before proceeding
 
 OPTIONAL but useful: entryFee, description, sponsors, staffing, accessibility, notes, constraints.
 
@@ -256,6 +263,10 @@ Rules:
 - Always include cateringEnabled (boolean), cateringBudget (number), cateringItems,
   cateringServingTime, and cateringDietaryNotes (strings) in the candidateTournament.
 - If the user is asking for live weather, sunrise, or sunset information without changing
+  tournament fields, set response_mode to "live_data_reply".
+- If the user is asking for golf course verification or information about a specific
+  golf course without changing tournament fields, set response_mode to "live_data_reply".
+- If the user is asking to search for golf courses in an area without changing
   tournament fields, set response_mode to "live_data_reply".
 - If the user is setting a tournament field based on sunrise or sunset, keep
   response_mode as "planner_workflow", preserve any explicit field updates in the
@@ -592,6 +603,14 @@ def _pending_action_summary(tool_plan: Dict[str, Any]) -> str:
         return "Answer the live weather question"
     if purpose == "sun_time_reply":
         return "Answer the live sunrise or sunset question"
+    if purpose == "verify_course_reply":
+        return "Answer the golf course verification question"
+    if purpose == "search_courses_reply":
+        return "Answer the golf course search question"
+    if purpose == "course_details_reply":
+        return "Provide detailed golf course information"
+    if purpose == "nearby_courses_reply":
+        return "Find golf courses near a location"
     return "Complete the pending live-data request"
 
 
@@ -1779,6 +1798,20 @@ async def _execute_tool_plan(
                 message,
             ),
             "error_message": message,
+            "sources": [],
+        }
+
+        return {
+            "used": False,
+            "tool_status": "error",
+            "candidate_tournament": candidate_tournament,
+            "tool_context": _build_tool_status_context(
+                tool_name,
+                tool_purpose,
+                "error",
+                f"Unsupported tool: {tool_name}",
+            ),
+            "error_message": f"Unsupported tool: {tool_name}",
             "sources": [],
         }
 
