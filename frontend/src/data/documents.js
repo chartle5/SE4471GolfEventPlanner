@@ -1,1641 +1,599 @@
-export const documents = [
+﻿export const documents = [
   {
-    id: 'rules-1',
-    title: 'Official Rules of Golf Summary for Tournament Organizers',
-    type: 'Guideline',
-    summary: 'Comprehensive summary of the United States Golf Association (USGA) and The R&A Rules of Golf as they apply to competitive tournament play.',
-    content: `# Official Rules of Golf Summary for Tournament Organizers
-
-## Introduction
-This document provides a comprehensive summary of the Rules of Golf as established by the United States Golf Association (USGA) and The R&A, with specific emphasis on their application in competitive tournament environments. Tournament organizers must ensure compliance with these rules to maintain fairness, integrity, and consistency across all events.
-
-## Key Principles
-The Rules of Golf are based on 14 fundamental principles that govern player conduct, equipment standards, and scoring procedures. These principles ensure that golf remains a game of skill, honesty, and sportsmanship.
-
-## Essential Rules for Tournaments
-
-### Rule 1: The Game and Its Standards
-- Golf is played by hitting a ball with a club from the teeing ground into the hole
-- Players must play the ball as it lies, except where specific relief procedures apply
-- The course must be played in the correct sequence of holes
-
-### Rule 2: Equipment Standards
-- Clubs and balls must conform to USGA/R&A testing standards
-- Players are responsible for ensuring their equipment is legal
-- Tournament organizers should verify equipment compliance during registration
-
-### Rule 3: The Rules of Play
-- Players must play in accordance with the rules
-- Ignorance of the rules is not an acceptable excuse for rule violations
-- Penalties must be applied consistently across all participants
-
-### Rule 4: Player Responsibilities
-- Players must know and apply the rules correctly
-- Players are responsible for their own scorecard and handicap calculations
-- Dishonest play results in disqualification
-
-### Rule 5: Playing the Ball
-- Players must play their own ball throughout the round
-- Ball movement penalties apply for natural forces and player actions
-- Back-on-the-line relief procedures must be followed precisely
-
-### Rule 6: Handicap and Scoring
-- Handicaps must be calculated using approved systems
-- Gross and net scores must be recorded accurately
-- Scorecard signing confirms the accuracy of all scores
-
-## Penalty Applications
-- Stroke penalties are added to the score of the hole where the breach occurred
-- General penalties result in a two-stroke penalty
-- Serious breaches may result in disqualification
-
-## Tournament-Specific Considerations
-- Local rules may be established for course-specific conditions
-- Clarifications should be communicated to all players in advance
-- Rule interpretations must be consistent and documented
-
-## Best Practices for Organizers
-1. Provide rule clarifications in pre-tournament communications
-2. Train volunteers and officials on rule enforcement
-3. Maintain detailed records of all rule decisions
-4. Ensure fair and consistent application of penalties
-
-This summary is not a substitute for the official Rules of Golf. Tournament organizers should consult the current edition of the Rules of Golf and consider professional rule certification for complex events.`,
-    tags: ['rules','official','players','USGA','R&A'],
-    relevance: 0.98
-  },
-  {
-    id: 'plan-1',
-    title: 'Comprehensive Tournament Planning and Management Guide',
-    type: 'Guide',
-    summary: 'Professional planning framework for organizing successful golf tournaments, including risk management and stakeholder coordination.',
-    content: `# Comprehensive Tournament Planning and Management Guide
-
-## Executive Summary
-This guide provides tournament organizers with a systematic approach to planning and executing successful golf events. From initial concept through post-event evaluation, this framework ensures comprehensive coverage of all critical planning elements.
-
-## Pre-Event Planning Phase (3-6 Months Out)
-
-### Strategic Planning
-- Define tournament objectives and target audience
-- Establish budget parameters and revenue projections
-- Identify key stakeholders and partnership opportunities
-- Conduct market analysis for competitive positioning
-
-### Venue Selection and Contracting
-- Evaluate course suitability for tournament format
-- Negotiate facility agreements and usage fees
-- Assess course conditions and maintenance requirements
-- Secure backup venue options for weather contingencies
-
-### Sponsorship and Marketing
-- Develop sponsorship prospectus with value propositions
-- Create marketing timeline and campaign strategy
-- Design promotional materials and digital presence
-- Establish media partnerships and publicity channels
-
-## Intermediate Planning Phase (1-3 Months Out)
-
-### Operational Logistics
-- Finalize participant registration system
-- Coordinate volunteer recruitment and training
-- Arrange catering, transportation, and accommodations
-- Develop detailed event timeline and contingency plans
-
-### Rules and Format Development
-- Select appropriate tournament format (stroke play, match play, scramble)
-- Establish handicap and eligibility requirements
-- Create local rules for course-specific conditions
-- Develop scoring and tie-breaking procedures
-
-### Risk Management
-- Conduct safety assessments and emergency planning
-- Obtain necessary insurance coverage
-- Develop weather delay and cancellation policies
-- Establish liability and waiver procedures
-
-## Event Execution Phase (Event Week)
-
-### Pre-Tournament Activities
-- Final course preparation and setup
-- Participant check-in and registration processing
-- Volunteer orientation and assignment
-- Equipment and material distribution
-
-### Day-of Operations
-- Opening ceremonies and announcements
-- Tee time management and pace of play monitoring
-- Scorekeeping and results tracking
-- Player services and hospitality coordination
-
-### Emergency Response
-- Weather monitoring and delay procedures
-- Medical emergency protocols
-- Equipment failure contingencies
-- Communication systems for rapid response
-
-## Post-Event Phase
-
-### Evaluation and Reporting
-- Participant feedback collection and analysis
-- Financial reconciliation and reporting
-- Performance metrics assessment
-- Lessons learned documentation
-
-### Follow-Up Activities
-- Results publication and award distribution
-- Sponsor recognition and relationship maintenance
-- Volunteer appreciation and retention planning
-- Future event planning based on insights
-
-## Key Success Factors
-- Clear communication with all stakeholders
-- Comprehensive contingency planning
-- Professional volunteer management
-- Attention to participant experience
-- Financial discipline and transparency
-
-## Recommended Timeline
-- 6 months: Strategic planning and venue selection
-- 3 months: Sponsorship finalization and marketing launch
-- 1 month: Operational details and volunteer coordination
-- 1 week: Final preparations and participant communications
-- Event day: Seamless execution and adaptability
-- Post-event: Evaluation and relationship building
-
-This guide serves as a foundation for tournament excellence. Adapt these principles to your specific event requirements while maintaining professional standards and participant satisfaction.`,
-    tags: ['planning','checklist','timeline','management','professional'],
-    relevance: 0.95
-  },
-  {
-    id: 'scramble',
-    title: 'Professional Scramble Tournament Format Guidelines',
-    type: 'Format',
-    summary: 'Official guidelines for conducting championship-level scramble tournaments, including advanced strategies and best practices.',
-    content: `# Professional Scramble Tournament Format Guidelines
-
-## Overview
-The scramble format is a team-based tournament structure designed to maximize participation, camaraderie, and scoring efficiency. This professional guide provides comprehensive standards for organizing high-level scramble events.
-
-## Format Structure
-
-### Team Composition
-- Teams typically consist of 2-4 players
-- Player selection may be based on skill level, random draw, or pre-determined pairings
-- Mixed gender and age group teams encouraged for inclusivity
-
-### Ball Selection Rules
-- After each shot, the team selects the best-positioned ball
-- All subsequent shots are played from that position
-- Team members alternate shots or follow predetermined rotation
-- Handicap strokes are allocated to specific players, not positions
-
-## Scoring Procedures
-
-### Stroke Allocation
-- Each player receives handicap strokes based on their individual handicap
-- Strokes are distributed across the team's scorecard
-- Net score calculation follows standard handicap principles
-
-### Hole-by-Hole Scoring
-- Team records the total strokes taken on each hole
-- Handicap strokes are subtracted to determine net score
-- Ties are broken using predetermined methods
-
-## Advanced Tournament Strategies
-
-### Course Management
-- Select tee positions appropriate for team play
-- Consider par-3 holes for efficiency
-- Plan for pace of play with team consultations
-
-### Handicap Implementation
-- Use full handicap or percentage-based reduction
-- Consider team handicap averaging for competitive balance
-- Document stroke allocation clearly for all participants
-
-## Variations and Modifications
-
-### Texas Scramble
-- Each player must play their own ball on approach shots
-- Team selects best drive, then plays individual approaches
-- Encourages individual skill while maintaining team element
-
-### Ambrose Format
-- Similar to Texas Scramble with additional constraints
-- Requires players to alternate shots in sequence
-- Adds strategic depth to ball selection decisions
-
-### Best Ball Scramble
-- Team plays best ball from tee, then scrambles from there
-- Reduces time compared to full scramble
-- Maintains team interaction and decision-making
-
-## Operational Best Practices
-
-### Time Management
-- Allocate 4-5 hours for 18-hole events
-- Schedule adequate breaks between nines
-- Monitor pace of play to maintain schedule
-
-### Equipment Considerations
-- Ensure adequate golf balls for team play
-- Provide range balls for warm-up if available
-- Consider cart allocation for team coordination
-
-### Scoring Administration
-- Use electronic scoring systems for accuracy
-- Assign dedicated scorers to each group
-- Implement real-time results tracking
-
-## Participant Guidelines
-
-### Etiquette and Conduct
-- Teams should play ready golf to maintain pace
-- Respect course conditions and other players
-- Maintain sportsmanlike conduct throughout
-
-### Safety Protocols
-- Follow all course safety guidelines
-- Monitor weather conditions and adjust play accordingly
-- Report any safety concerns immediately
-
-## Awards and Recognition
-
-### Individual Awards
-- Longest drive, closest to pin, and other skill-based awards
-- Team spirit and sportsmanship recognition
-
-### Team Awards
-- Gross and net team champions
-- Special categories for different skill levels
-- Participation and fun awards
-
-## Legal and Insurance Considerations
-- Ensure proper liability coverage for team activities
-- Obtain participant waivers and release forms
-- Comply with local golf association requirements
-
-This format guide provides the foundation for successful scramble tournaments. Organizations should adapt these guidelines to their specific venue and participant requirements while maintaining professional standards.`,
-    tags: ['format','scramble','professional','team-play'],
-    relevance: 0.86
-  },
-  {
-    id: 'stroke',
-    title: 'Stroke Play Tournament Administration Manual',
-    type: 'Format',
-    summary: 'Comprehensive manual for managing stroke play competitions, including advanced scoring systems and dispute resolution procedures.',
-    content: `# Stroke Play Tournament Administration Manual
-
-## Introduction
-Stroke play is the most common tournament format in professional and amateur golf. This manual provides comprehensive guidelines for organizing and administering stroke play events with maximum accuracy, fairness, and efficiency.
-
-## Format Fundamentals
-
-### Basic Structure
-- Each player competes individually against the course and other competitors
-- The lowest total score determines the winner
-- Scores are recorded hole-by-hole throughout the round
-
-### Scoring Methodology
-- Players count every stroke, including penalties
-- Gross score: Total strokes taken
-- Net score: Gross score minus handicap strokes
-
-## Handicap Systems
-
-### USGA Handicap System
-- Full handicap based on established index
-- Strokes allocated per hole based on difficulty rating
-- Maximum handicap limits apply for competitive equity
-
-### Tournament Adjustments
-- Percentage-based handicaps for special events
-- Net competition limits for championship play
-- Age and gender considerations for equitable play
-
-## Scoring Administration
-
-### Scorecard Management
-- Official scorecards must be used for all rounds
-- Players record their own scores with witness verification
-- Scorecard signing confirms accuracy and agreement
-
-### Electronic Scoring Systems
-- Real-time score tracking and validation
-- Automated handicap calculations
-- Instant results publication and leaderboards
-
-### Score Posting Procedures
-- Scores must be posted within specified timeframes
-- Discrepancies require immediate investigation
-- Official results require committee approval
-
-## Tie-Breaking Procedures
-
-### Primary Methods
-1. Sudden death playoff on designated hole
-2. Count-back from final hole
-3. Total score on designated holes
-4. Random draw (last resort)
-
-### Advanced Tie-Breakers
-- Back-nine score comparison
-- Front-nine score comparison
-- Individual hole scores in reverse order
-- Handicap-adjusted tie-breakers
-
-## Rules Enforcement
-
-### Penalty Applications
-- Stroke penalties added to hole score
-- General penalties: two-stroke addition
-- Disqualification for serious breaches
-
-### Dispute Resolution
-- Immediate consultation with rules official
-- Committee review for complex situations
-- Appeal procedures with time limits
-- Documentation of all decisions
-
-## Operational Excellence
-
-### Pace of Play Management
-- Established time standards per hole
-- Marshal system for monitoring and assistance
-- Penalty assessments for slow play
-- Player education and communication
-
-### Course Management
-- Tee time scheduling and spacing
-- Course conditions assessment
-- Maintenance coordination
-- Weather monitoring and delay procedures
-
-## Technology Integration
-
-### Scoring Applications
-- Mobile scoring apps for real-time updates
-- GPS tracking for pace monitoring
-- Automated results calculation and distribution
-
-### Data Analytics
-- Performance metrics tracking
-- Statistical analysis for future planning
-- Participant feedback collection
-
-## Participant Experience
-
-### Pre-Tournament Preparation
-- Clear format communication
-- Practice round opportunities
-- Rules clinic and briefing sessions
-
-### During Competition
-- Professional scoring assistance
-- Real-time leaderboard access
-- Player services and amenities
-
-### Post-Tournament
-- Official results publication
-- Award presentation ceremonies
-- Feedback collection and analysis
-
-## Risk Management
-
-### Safety Protocols
-- Emergency response procedures
-- Weather evacuation plans
-- Medical facility coordination
-
-### Insurance Requirements
-- Tournament liability coverage
-- Participant accident insurance
-- Property damage protection
-
-## Professional Standards
-
-### Committee Responsibilities
-- Rules interpretation and enforcement
-- Fair play promotion
-- Participant dispute resolution
-- Tournament integrity maintenance
-
-### Volunteer Training
-- Rules knowledge certification
-- Scoring system proficiency
-- Emergency response training
-- Customer service excellence
-
-This manual establishes the gold standard for stroke play tournament administration. Organizations should implement these procedures to ensure competitive integrity and participant satisfaction.`,
-    tags: ['format','stroke-play','administration','professional'],
-    relevance: 0.84
-  },
-  {
-    id: 'tee-times',
-    title: 'Tee Time Scheduling and Course Management Policy',
+    id: 'course-tee-time-scheduling',
+    title: 'Course Tee Time Scheduling Policy',
     type: 'Policy',
-    summary: 'Institutional policy for optimizing tee time assignments, course utilization, and player experience in tournament settings.',
-    content: `# Tee Time Scheduling and Course Management Policy
+    summary: 'Comprehensive policy for optimizing tee time assignments, course utilization, and participant experience in tournament settings.',
+    content: `# Course Tee Time Scheduling Policy
 
-## Policy Overview
-This policy establishes comprehensive standards for tee time scheduling and course management in tournament golf. Effective scheduling ensures optimal course utilization, fair play opportunities, and enhanced participant experience.
+Tee time scheduling is more than just assigning starting times. It is a critical operational decision that affects pace of play, field capacity, player fairness, and overall tournament quality. A good scheduling policy balances competing needs: maximize course utilization without compromising pace; maintain fair access to preferred times; accommodate accessibility requirements; and support the operational flow of the day.
 
 ## Scheduling Principles
 
-### Capacity Optimization
+A scheduling policy should balance five things:
 - Maximum course utilization without compromising pace of play
-- Balanced distribution of players across available tee times
-- Consideration of course maintenance and rest periods
-
-### Fairness and Equity
-- Equal access to preferred tee times
-- Skill-level appropriate groupings
+- Fair and equitable access to tee times
+- Skill-level appropriate groupings when relevant
 - Accommodation of special needs and accessibility requirements
+- Course maintenance and rest period preservation
 
-## Scheduling Methodology
+## Key Decisions
 
-### Time Slot Allocation
-- Standard 8-10 minute intervals between tee times
-- Group size considerations (singles, doubles, triples, foursomes)
-- Cart and walking player coordination
-
-### Seasonal Adjustments
-- Daylight hours optimization
-- Weather pattern considerations
-- Peak season demand management
-
-## Tournament-Specific Scheduling
-
-### Event Formats
-- Stroke play: Individual tee time assignments
-- Match play: Paired tee time coordination
-- Team events: Group synchronization requirements
-
-### Shotgun Starts
-- Simultaneous tee-off from multiple locations
-- Course division for efficient play
-- Results consolidation procedures
-
-### Staggered Starts
-- Progressive tee time assignments
-- Course flow optimization
-- Pace of play management
-
-## Advanced Scheduling Techniques
-
-### Computer-Aided Optimization
-- Algorithm-based tee time assignments
-- Historical data analysis for optimal grouping
-- Real-time adjustment capabilities
-
-### Dynamic Scheduling
-- Weather-based adjustments
-- No-show management and redistribution
-- Emergency rescheduling protocols
-
-## Operational Procedures
-
-### Registration Integration
-- Online tee time selection systems
-- Automated confirmation and reminder systems
-- Cancellation and change policies
-
-### Communication Protocols
-- Pre-event tee time notifications
-- Day-of confirmation procedures
-- Weather-related updates and changes
-
-## Course Management Integration
-
-### Maintenance Coordination
-- Tee time scheduling around maintenance activities
-- Course conditioning assessment
-- Equipment and personnel allocation
-
-### Safety Considerations
-- Emergency access route preservation
-- Hazardous area avoidance
-- Medical emergency response planning
-
-## Technology Solutions
-
-### Reservation Systems
-- Web-based booking platforms
-- Mobile application access
-- Integration with tee time management software
-
-### Monitoring Tools
-- Real-time occupancy tracking
-- Pace of play analytics
-- Player feedback systems
-
-## Policy Enforcement
-
-### Compliance Monitoring
-- Regular audit procedures
-- Performance metric tracking
-- Continuous improvement processes
-
-### Exception Handling
-- Special accommodation procedures
-- VIP and sponsor considerations
-- Emergency scheduling protocols
-
-## Quality Assurance
-
-### Participant Satisfaction
-- Survey and feedback collection
-- Service quality monitoring
-- Continuous improvement initiatives
-
-### Operational Efficiency
-- Resource utilization metrics
-- Cost-benefit analysis
-- Process optimization studies
-
-## Legal and Regulatory Compliance
-
-### Accessibility Standards
-- Americans with Disabilities Act compliance
-- Universal design principles
-- Accommodation documentation
-
-### Insurance Requirements
-- Liability coverage for scheduling decisions
-- Risk assessment procedures
-- Incident reporting protocols
-
-This policy provides the framework for professional tee time management. Implementation requires coordination between tournament organizers, course management, and technology providers to ensure optimal results.`,
-    tags: ['scheduling','tee-times','policy','management'],
-    relevance: 0.82
+Tournament organizers should determine:
+- Whether the event uses a shotgun start, staggered tee times, or double-tee starts
+- Standard intervals between groups (typically 8-10 minutes)
+- Whether player choice is allowed or whether assignments are made by organizers
+- How walk-ups or substitutions are handled
+- Whether early/late times are preferred and how to distribute fairly`,
+    tags: ['scheduling', 'tee-times', 'policy', 'course-management', 'tournament-operations'],
+    relevance: 0.92
   },
   {
-    id: 'accessibility',
-    title: 'Golf Tournament Accessibility and Inclusion Policy',
-    type: 'Policy',
-    summary: 'Comprehensive policy for ensuring accessible golf tournaments, including ADA compliance, mobility assistance, and inclusive participation strategies.',
-    content: `# Golf Tournament Accessibility and Inclusion Policy
+    id: 'golf-cart-accessibility',
+    title: 'Golf Cart Usage and Accessibility Guidelines',
+    type: 'Guidelines',
+    summary: 'Decision-making framework for golf cart allocation, accessibility accommodations, and equitable cart distribution.',
+    content: `# Golf Cart Usage and Accessibility Guidelines
 
-## Policy Statement
-This policy establishes the commitment to providing accessible and inclusive golf tournament experiences for all participants, regardless of physical ability, age, or other characteristics. The organization is dedicated to compliance with all applicable accessibility laws and best practices.
+Golf carts are one of the most visible operational elements of a tournament. Poor cart planning creates immediate problems: confusion at registration, disputes about assignments, course damage, accessibility failures, and frustration. Strong cart planning improves the entire event.
 
-## Legal Framework
+## Core Decision Principle
 
-### Americans with Disabilities Act (ADA)
-- Title III requirements for public accommodations
-- Reasonable modifications and accommodations
-- Effective communication obligations
+A good cart policy balances five things:
+- Player mobility and comfort
+- Accessibility and accommodation
+- Course safety and turf protection
+- Pace of play and operational flow
+- Fairness and consistency
 
-### Additional Standards
-- USGA accessibility guidelines
-- State and local accessibility regulations
-- International accessibility standards
+## Cart Policy Options
 
-## Accessibility Assessment
+Organizers should choose one baseline approach:
 
-### Facility Evaluation
-- Course accessibility audits
-- Equipment availability assessment
-- Support service capability review
+**Option 1: Carts Included for All Players**
+Best for charity events, corporate outings, mixed-ability tournaments. Simple and inclusive but higher cost.
 
-### Program Review
-- Registration process accessibility
-- Communication method evaluation
-- Participant support service analysis
+**Option 2: Carts Optional**
+Best for club events, mixed-skill fields. Offers flexibility but requires fair reservation process.
 
-## Accommodation Procedures
+**Option 3: Carts Restricted or Limited**
+Best for championships, walking-focused competitions. Preserves competitive norms but requires clear communication.
 
-### Pre-Event Planning
-- Accessibility disclosure in registration materials
-- Individual accommodation request process
-- Medical documentation requirements
+## Accessibility Integration
 
-### Accommodation Types
-- Mobility assistance and transportation
-- Adaptive equipment provision
-- Modified rules and format adjustments
-- Communication accommodations
-
-## Golf Cart Policies
-
-### Standard Provisions
-- Electric golf cart availability
-- Trained attendant services
-- Safety equipment and procedures
-
-### Specialized Services
-- Wheelchair-accessible carts
-- Medical necessity accommodations
-- Emergency transportation capabilities
-
-## Course Accessibility Features
-
-### Physical Modifications
-- Accessible pathways and routes
-- Modified tee positions
-- Ramp and elevation accommodations
-
-### Equipment Solutions
-- Adaptive golf equipment
-- Modified ball and club options
-- Assistive technology integration
-
-## Communication and Support
-
-### Information Accessibility
-- Braille and large print materials
-- Audio descriptions and announcements
-- Sign language interpreter services
-
-### Staff Training
-- Accessibility awareness training
-- Accommodation implementation procedures
-- Emergency response protocols
-
-## Inclusive Participation Strategies
-
-### Program Diversity
-- Multi-ability tournament formats
-- Adaptive golf instruction programs
-- Family and group participation options
-
-### Skill-Level Accommodations
-- Modified scoring systems
-- Alternative competition formats
-- Peer support and mentoring programs
-
-## Medical and Safety Considerations
-
-### Health Screening
-- Medical condition disclosure procedures
-- Physician clearance requirements
-- Emergency medical information collection
-
-### Safety Protocols
-- Weather-related accommodation adjustments
-- Medical emergency response plans
-- Evacuation procedure modifications
-
-## Technology Integration
-
-### Assistive Technologies
-- Hearing assistance systems
-- Visual aid technologies
-- Communication device support
-
-### Digital Accessibility
-- Accessible website and registration systems
-- Mobile application compatibility
-- Electronic communication standards
-
-## Training and Education
-
-### Staff Development
-- Accessibility certification programs
-- Cultural competency training
-- Disability awareness education
-
-### Participant Education
-- Accessibility resource provision
-- Self-advocacy support
-- Community resource connections
-
-## Monitoring and Evaluation
-
-### Performance Metrics
-- Accommodation satisfaction surveys
-- Accessibility incident tracking
-- Continuous improvement measurements
-
-### Policy Review
-- Annual accessibility assessments
-- Regulatory compliance audits
-- Best practice updates
-
-## Partnership Development
-
-### Community Collaboration
-- Disability advocacy organization partnerships
-- Adaptive sports program connections
-- Rehabilitation facility relationships
-
-### Equipment and Service Providers
-- Adaptive equipment vendor relationships
-- Transportation service coordination
-- Medical support network development
-
-## Financial Considerations
-
-### Cost Management
-- Accessibility budget allocation
-- Grant and sponsorship opportunities
-- Cost-benefit analysis procedures
-
-### Funding Strategies
-- Accessibility fee structures
-- Fundraising campaign development
-- Corporate partnership opportunities
-
-## Emergency Preparedness
-
-### Crisis Response
-- Accessibility considerations in emergency plans
-- Evacuation procedure modifications
-- Communication during emergencies
-
-### Business Continuity
-- Alternative venue accessibility assessment
-- Backup equipment and service arrangements
-- Participant support during disruptions
-
-This comprehensive policy ensures that golf tournaments are accessible to all participants while maintaining competitive integrity and participant satisfaction.`,
-    tags: ['accessibility','policy','inclusion','ADA'],
-    relevance: 0.8
+Accessibility should be part of event design from the beginning, not handled as an afterthought. Consider players with mobility limitations, older participants, temporary injuries, and medical conditions affecting walking tolerance. Create a documented process for handling accessibility requests consistently and respectfully.`,
+    tags: ['golf-carts', 'accessibility', 'operations', 'inclusivity', 'guidelines'],
+    relevance: 0.90
   },
   {
-    id: 'weather',
-    title: 'Weather Emergency and Delay Management Policy',
-    type: 'Policy',
-    summary: 'Institutional policy for weather-related tournament management, including safety protocols, delay procedures, and participant communication strategies.',
-    content: `# Weather Emergency and Delay Management Policy
+    id: 'comprehensive-golf-tournament-planning',
+    title: 'Comprehensive Golf Tournament Planning Guide',
+    type: 'Guide',
+    summary: 'Professional planning framework for organizing successful golf tournaments from concept through post-event evaluation.',
+    content: `# Comprehensive Golf Tournament Planning Guide
 
-## Policy Overview
-This policy establishes comprehensive procedures for managing weather-related emergencies and delays in golf tournaments. The primary objectives are to ensure participant safety, maintain competitive integrity, and minimize disruption to tournament operations.
+A well-run golf tournament does not happen because the golf course is nice. It happens because the organizer has made clear decisions early, communicated them well, and built reliable operating procedures. This guide helps you plan and run a successful tournament whether organizing a charity fundraiser, corporate outing, club championship, or competitive amateur event.
 
-## Risk Assessment
+## Start With Event Strategy
 
-### Weather Hazard Identification
-- Thunderstorm and lightning risks
-- High wind and severe weather conditions
-- Extreme temperature considerations
-- Flooding and course condition issues
+Before booking anything, decide what kind of event you are building:
 
-### Probability Analysis
-- Seasonal weather pattern assessment
-- Historical data review
-- Real-time monitoring systems
+**Core Questions:**
+- What is the primary purpose? (fundraising, networking, competition, social)
+- What does success look like? (revenue, participation, experience, repeat attendance)
+- Who is the target audience? (serious golfers, corporate participants, mixed-skill, members)
+- What tone do you want? (premium, relaxed, competitive, charity-focused)
 
-## Safety Protocols
+**Key Output:** Write a one-paragraph event brief defining purpose, audience, field size, budget, atmosphere, and top 3 success metrics. This becomes your decision filter.
 
-### Lightning Safety
-- Lightning detection system implementation
-- Evacuation procedures and safe areas
-- Return-to-play guidelines
-- Medical emergency response coordination
+## Choose the Right Format
 
-### Severe Weather Response
-- Tornado and severe storm procedures
-- High wind safety measures
-- Extreme heat/cold protocols
-- Flood evacuation planning
+Your format should fit your audience:
+- **Scramble:** Best for charity, corporate, beginner-friendly (fast, social, inclusive)
+- **Best Ball:** Best for mixed competitive/social (rewards strong players, keeps all involved)
+- **Stroke Play:** Best for championships, serious events (traditional, straightforward, competitive)
+- **Stableford:** Best for pace-of-play conscious, large fields (keeps engagement after bad holes)
 
-## Delay Management Procedures
+## Build Budget Before Selling
 
-### Suspension Criteria
-- Automatic suspension triggers
-- Committee decision-making authority
-- Participant notification requirements
-- Resumption condition specifications
+Include all revenue sources (registration, sponsorships, raffles) and all expenses (course, food, staffing, contingency reserves). Include 10-15% contingency line for unexpected costs.
 
-### Delay Communication
-- Multi-channel notification systems
-- Real-time updates and announcements
-- Social media and app-based alerts
-- Emergency contact procedures
+## Select Venue Intelligently
 
-## Operational Continuity
-
-### Course Management
-- Equipment and personnel protection
-- Facility lockdown procedures
-- Damage assessment protocols
-- Recovery and cleanup planning
-
-### Tournament Integrity
-- Scoring suspension and resumption rules
-- Handicap and penalty considerations
-- Tie-breaking procedure modifications
-- Results finalization requirements
-
-## Technology Integration
-
-### Monitoring Systems
-- Weather station and radar integration
-- Real-time alert systems
-- Mobile application notifications
-- Emergency communication networks
-
-### Data Analytics
-- Weather pattern prediction models
-- Historical delay analysis
-- Risk assessment algorithms
-
-## Participant Support
-
-### Accommodation Services
-- Shelter and comfort station provision
-- Food and beverage availability
-- Transportation and lodging assistance
-- Medical and emergency services
-
-### Communication Strategies
-- Clear delay reason explanations
-- Expected resumption time estimates
-- Alternative activity suggestions
-- Reimbursement and refund policies
-
-## Staff and Volunteer Management
-
-### Training Requirements
-- Weather safety certification
-- Emergency response training
-- Communication protocol education
-- Equipment operation proficiency
-
-### Deployment Strategies
-- Emergency response team organization
-- Communication chain of command
-- Resource allocation procedures
-- Post-incident debriefing
-
-## Insurance and Liability
-
-### Coverage Requirements
-- Weather delay insurance policies
-- Liability protection for delays
-- Participant injury coverage
-- Property damage protection
-
-### Risk Management
-- Contractual delay clauses
-- Force majeure provisions
-- Financial impact assessments
-
-## Post-Incident Procedures
-
-### Evaluation and Review
-- Incident documentation and analysis
-- Participant feedback collection
-- Process improvement recommendations
-- Policy update requirements
-
-### Communication Follow-Up
-- Official incident reports
-- Participant appreciation communications
-- Future event planning adjustments
-
-## Legal and Regulatory Compliance
-
-### Governmental Requirements
-- National Weather Service guidelines
-- Local emergency management coordination
-- Environmental protection regulations
-
-### Industry Standards
-- USGA weather policy compliance
-- Professional tournament standards
-- Insurance industry requirements
-
-## Continuous Improvement
-
-### Performance Monitoring
-- Delay frequency and duration tracking
-- Participant satisfaction measurement
-- Operational efficiency analysis
-
-### Technology Updates
-- New monitoring system evaluation
-- Communication tool upgrades
-- Safety equipment modernization
-
-## Emergency Contact Information
-
-### Key Personnel
-- Tournament director contact details
-- Emergency services coordination
-- Weather service liaisons
-- Medical facility contacts
-
-### Communication Channels
-- Emergency hotline numbers
-- Radio and communication frequencies
-- Digital alert system access
-
-This policy ensures comprehensive weather risk management while prioritizing participant safety and tournament integrity.`,
-    tags: ['weather','safety','policy','emergency'],
-    relevance: 0.78
+Choose based on fit, not just prestige. Evaluate availability, capacity, shotgun-start suitability, range access, banquet capacity, staff support, pace reputation, cart availability, accessibility, and rain policy.`,
+    tags: ['planning', 'tournament-management', 'strategy', 'guide', 'comprehensive'],
+    relevance: 0.95
   },
   {
-    id: 'pace',
-    title: 'Pace of Play Management Guidelines',
-    type: 'Guideline',
-    summary: 'Professional guidelines for maintaining optimal pace of play, including monitoring systems, enforcement procedures, and player education strategies.',
-    content: `# Pace of Play Management Guidelines
+    id: 'pace-of-play-guidelines',
+    title: 'Pace of Play Guidelines',
+    type: 'Guidelines',
+    summary: 'Professional framework for managing pace of play during tournaments, including design principles and enforcement strategies.',
+    content: `# Pace of Play Guidelines
 
-## Introduction
-These guidelines establish professional standards for managing pace of play in golf tournaments. Efficient pace management ensures fair competition, maximizes course utilization, and enhances participant satisfaction.
+Pace of play is one of the strongest drivers of tournament quality. When pace is managed well, the event feels organized, fair, and enjoyable. When pace breaks down, nearly every part of the tournament suffers: player experience declines, scoring becomes uneven, weather risks increase, staff fatigue rises, and frustration spreads.
 
-## Pace Standards
+## Core Decision Principle
 
-### Time Allotments
-- Par 3 holes: 12-14 minutes
-- Par 4 holes: 13-15 minutes
-- Par 5 holes: 15-18 minutes
-- Average round: 4-4.5 hours
+A strong pace-of-play policy balances:
+- Player experience
+- Competitive fairness
+- Course capacity and flow
+- Operational control
+- Reasonable expectations for field type
 
-### Group Dynamics
-- Singles: More flexible timing
-- Doubles: Standard pace expectations
-- Triples/Foursomes: Adjusted for group size
+The goal is not to make players feel rushed, but to keep the tournament moving at a pace that is steady, fair, and appropriate for the format and course.
 
-## Monitoring Systems
+## Event Type Affects Pace Standards
 
-### Technology Solutions
-- GPS tracking systems for group location
-- Automated timing and alert systems
-- Real-time pace monitoring applications
+**Charity and Corporate Events:** Slower than competitive events; prioritize enjoyment while preventing excessive dragging.
 
-### Manual Monitoring
-- Course marshal assignments
-- Checkpoint timing procedures
-- Player self-monitoring encouragement
+**Member Tournaments:** Moderate pace; sensitive to format and tee-time structure.
 
-## Enforcement Procedures
+**Competitive/Championship Events:** Disciplined and predictable; protect competitive integrity while preventing avoidable delays.
 
-### Warning System
-- Verbal warnings for first offenses
-- Written warnings for repeated delays
-- Time penalty assessments for serious violations
+## Build Pace Into Event Design
 
-### Penalty Structure
-- One-stroke penalty for slow play
-- Additional penalties for continued delays
-- Disqualification for egregious violations
+Design choices strongly affect pace:
+- Starting method (shotgun vs tee times)
+- Tee time interval
+- Group size
+- Tournament format
+- Field skill level
+- Course setup
+- Contest/activation numbers
+- Cart policy
+- Scoring procedures
 
-## Player Education
-
-### Pre-Tournament Communication
-- Pace expectation communication
-- Ready golf technique instruction
-- Penalty policy explanation
-
-### On-Course Guidance
-- Pace of play signage and markers
-- Marshal assistance and advice
-- Peer encouragement programs
-
-## Operational Strategies
-
-### Course Management
-- Tee time spacing optimization
-- Course layout efficiency assessment
-- Maintenance timing coordination
-
-### Group Assignment
-- Skill-level appropriate pairings
-- Pace-conscious group formation
-- Mixed-ability group strategies
-
-## Technology Integration
-
-### Digital Tools
-- Mobile pace tracking applications
-- Automated alert systems
-- Performance analytics platforms
-
-### Data Collection
-- Historical pace data analysis
-- Trend identification and correction
-- Predictive modeling for scheduling
-
-## Staff Training
-
-### Marshal Development
-- Pace monitoring technique training
-- Communication skill development
-- Conflict resolution procedures
-
-### Rules Official Training
-- Penalty application consistency
-- Documentation and reporting procedures
-- Appeal process management
-
-## Participant Experience
-
-### Communication Strategies
-- Clear expectation setting
-- Regular progress updates
-- Positive reinforcement approaches
-
-### Support Services
-- On-course assistance provision
-- Equipment and cart services
-- Player comfort and convenience
-
-## Special Considerations
-
-### Tournament Formats
-- Stroke play pace requirements
-- Match play timing considerations
-- Team event coordination needs
-
-### Environmental Factors
-- Weather impact assessments
-- Course condition adjustments
-- Seasonal timing modifications
-
-## Continuous Improvement
-
-### Performance Metrics
-- Average round time tracking
-- Participant satisfaction surveys
-- Efficiency improvement measurements
-
-### Process Optimization
-- Best practice identification
-- Technology upgrade evaluation
-- Policy refinement procedures
-
-## Legal and Ethical Considerations
-
-### Fair Play Principles
-- Equal opportunity maintenance
-- Competitive integrity preservation
-- Participant rights protection
-
-### Dispute Resolution
-- Appeal procedure establishment
-- Mediation and arbitration options
-- Documentation and record-keeping
-
-## Implementation Framework
-
-### Policy Development
-- Committee approval processes
-- Stakeholder input collection
-- Regular policy review cycles
-
-### Training Programs
-- Annual staff certification
-- Participant education campaigns
-- Continuous learning initiatives
-
-These guidelines provide a comprehensive framework for professional pace of play management in golf tournaments.`,
-    tags: ['pace','guidelines','management','professional'],
-    relevance: 0.75
+A tournament cannot be designed to invite slow play and then expect a pace reminder to solve it. Address the structure first.`,
+    tags: ['pace-of-play', 'flow-management', 'tournament-operations', 'guidelines'],
+    relevance: 0.92
   },
   {
-    id: 'schedule-sample',
-    title: 'Professional Tournament Schedule Template',
-    type: 'Template',
-    summary: 'Comprehensive schedule template for championship-level golf tournaments, including contingency planning and stakeholder coordination.',
-    content: `# Professional Tournament Schedule Template
+    id: 'player-registration-checkin',
+    title: 'Player Registration and Check-In Procedures Guide',
+    type: 'Procedures',
+    summary: 'Decision-making framework for creating efficient registration and check-in processes that reduce errors and improve player experience.',
+    content: `# Player Registration and Check-In Procedures Guide
 
-## Tournament Overview
-This template provides a comprehensive schedule framework for organizing championship-level golf tournaments. The schedule accommodates various event sizes and formats while ensuring smooth operations and participant satisfaction.
+Registration and check-in should do more than collect names and hand out scorecards. They should reduce confusion, improve player experience, support accurate scoring and pairings, and help the tournament begin on time.
 
-## Pre-Tournament Phase (7-30 Days Prior)
+## Core Goals of Registration and Check-In
 
-### Week 4: Final Preparations
-- Course final inspection and setup
-- Equipment and material procurement
-- Volunteer final assignments
-- Weather contingency planning
+A good system should accomplish five things:
+1. **Confirm who is playing:** Accurate final list before competition begins
+2. **Ensure players have what they need:** Scorecards, cart assignments, rules sheets, meal tickets
+3. **Keep the start on schedule:** Reduce bottlenecks and help players arrive on time
+4. **Reduce errors:** Catch mistakes in names, handicaps, pairings before event day
+5. **Create positive first impression:** Smooth check-in sets tone for entire event
 
-### Week 3: Participant Coordination
-- Final registration confirmations
-- Tee time assignments and notifications
-- Rules briefing scheduling
-- Hospitality arrangements
+## Key Registration Decisions
 
-### Week 2: Operational Setup
-- Scorekeeping system testing
-- Communication system verification
-- Emergency response team coordination
-- Media and sponsor preparations
+Before the event:
+- **Registration Format:** Online, on-site, hybrid, or invitation-based?
+- **Information to Collect:** What is actually necessary? (name, email, handicap, accessibility needs, meal preference, emergency contact, waiver)
+- **Payment Timing:** At registration, by deadline, at check-in, or through sponsorship?
+- **Refund/Substitution Policy:** Define cancellation deadlines and transfer rules
 
-### Week 1: Final Checks
-- Equipment inventory and distribution
-- Course maintenance coordination
-- Staff final training sessions
-- Participant welcome package assembly
+## Check-In Models
 
-## Tournament Day Schedule
+**Centralized Check-In Table:** One registration area. Best for small-medium events, casual outings.
 
-### Morning Session (6:00 AM - 12:00 PM)
+**Multiple Stations:** Separate stations by division or name. Best for large events, reduces congestion.
 
-#### 6:00 AM - 7:00 AM: Early Setup
-- Course preparation and maintenance
-- Equipment staging and distribution
-- Volunteer check-in and briefing
-- Weather monitoring station activation
+**Captain/Team Check-In:** Team representative checks in for group. Best for scrambles, corporate foursomes.
 
-#### 7:00 AM - 8:00 AM: Registration and Check-In
-- Player registration processing
-- Scorecard and equipment distribution
-- Rules clinic and format briefing
-- Hospitality services activation
-
-#### 8:00 AM - 9:00 AM: Opening Ceremonies
-- Welcome addresses and announcements
-- Sponsor recognitions
-- Safety briefing and rules review
-- Group photography opportunities
-
-#### 9:00 AM - 10:30 AM: Initial Tee Times
-- First wave of tee-offs
-- Pace monitoring initiation
-- Scorekeeping system activation
-- On-course support deployment
-
-### Midday Session (12:00 PM - 3:00 PM)
-
-#### 12:00 PM - 1:00 PM: Lunch Break
-- Catered meal service
-- Rest and recovery opportunities
-- Informal networking sessions
-- Equipment maintenance breaks
-
-#### 1:00 PM - 2:30 PM: Continued Play
-- Second wave tee times
-- Pace of play monitoring
-- Weather condition assessments
-- Participant support services
-
-### Afternoon Session (3:00 PM - 6:00 PM)
-
-#### 3:00 PM - 4:30 PM: Final Rounds
-- Completion of all competitive rounds
-- Score verification processes
-- Preliminary results compilation
-
-#### 4:30 PM - 5:30 PM: Awards Preparation
-- Results finalization and verification
-- Trophy and award staging
-- Presentation script preparation
-- Media coordination
-
-#### 5:30 PM - 6:30 PM: Awards Ceremony
-- Official results announcement
-- Award presentations and recognitions
-- Sponsor acknowledgments
-- Closing remarks and announcements
-
-## Post-Tournament Activities
-
-### Evening Session (6:30 PM - 8:00 PM)
-- Informal gatherings and networking
-- Volunteer appreciation events
-- Equipment collection and inventory
-- Facility restoration and cleanup
-
-### Next Day Follow-Up
-- Official results publication
-- Participant feedback collection
-- Financial reconciliation
-- Event evaluation and debriefing
-
-## Contingency Planning
-
-### Weather Delays
-- Suspension procedures and criteria
-- Resumption protocols
-- Makeup scheduling options
-- Communication strategies
-
-### Equipment Failures
-- Backup system activation
-- Alternative procedure implementation
-- Participant notification processes
-
-### Participant Issues
-- Medical emergency response
-- Equipment replacement procedures
-- Schedule adjustment protocols
-
-## Resource Allocation
-
-### Personnel Requirements
-- Tournament director and committee
-- Rules officials and referees
-- Course marshals and pace monitors
-- Registration and hospitality staff
-
-### Equipment Needs
-- Scoring systems and technology
-- Communication devices and radios
-- Medical and safety equipment
-- Awards and presentation materials
-
-## Communication Timeline
-
-### Pre-Event Communications
-- Initial schedule distribution (30 days prior)
-- Update notifications (7 days prior)
-- Final confirmations (24 hours prior)
-
-### Day-of Communications
-- Real-time schedule updates
-- Weather and delay announcements
-- Results and leaderboard distribution
-
-### Post-Event Communications
-- Official results and highlights
-- Thank you messages and feedback requests
-- Future event announcements
-
-## Quality Assurance
-
-### Performance Monitoring
-- Schedule adherence tracking
-- Participant satisfaction measurement
-- Operational efficiency analysis
-
-### Continuous Improvement
-- Post-event evaluation processes
-- Best practice documentation
-- Template refinement procedures
-
-This comprehensive schedule template ensures professional tournament execution while providing flexibility for various event requirements and contingencies.`,
-    tags: ['schedule','template','professional','timeline'],
-    relevance: 0.88
+Best practice: Send confirmation immediately; send final reminder shortly before event; use clear signage; anticipate registration volume.`,
+    tags: ['registration', 'check-in', 'procedures', 'operations', 'player-management'],
+    relevance: 0.91
   },
   {
-    id: 'registration',
-    title: 'Tournament Registration and Check-In Procedures Manual',
-    type: 'Procedure',
-    summary: 'Comprehensive manual for managing participant registration, check-in processes, and administrative operations in golf tournaments.',
-    content: `# Tournament Registration and Check-In Procedures Manual
+    id: 'sample-golf-tournament-schedule',
+    title: 'Sample Golf Tournament Schedule',
+    type: 'Reference',
+    summary: 'Example timeline and schedule template for a typical golf tournament event day.',
+    content: `# Sample Golf Tournament Schedule
 
-## Overview
-This manual establishes professional standards for tournament registration and check-in operations. Efficient procedures ensure smooth participant onboarding, accurate data collection, and positive first impressions.
+A detailed schedule helps ensure everything runs on time and in proper sequence. This template shows typical timing for a full-day charity or corporate tournament with a shotgun start.
 
-## Registration System Design
+## Pre-Event Day (Setup)
 
-### Technology Infrastructure
-- Web-based registration platform
-- Mobile application compatibility
-- Payment processing integration
-- Database management systems
+**3:00 PM** - Course and venue access opens. Setup crew begins preparing:
+- Registration tables and check-in area
+- Scoring stations
+- Tee box signage
+- Cart staging area
+- Meal service area
+- Awards/prize display
 
-### Data Collection Requirements
-- Personal information and contact details
-- Handicap and skill level information
-- Medical and accessibility needs
-- Sponsorship and affiliation data
+**4:00 PM** - Final walkthrough with course staff, volunteers, and key organizers
 
-## Pre-Event Registration Procedures
+**5:00 PM** - Final equipment check; volunteer briefing if evening before
 
-### Online Registration Process
-- User-friendly interface design
-- Step-by-step registration workflow
-- Real-time availability checking
-- Confirmation and payment processing
+## Event Day Morning
 
-### Manual Registration Handling
-- Phone and email registration procedures
-- Paper registration form processing
-- Data entry and verification protocols
+**6:30 AM** - Doors open; staff arrives, final setup completed
 
-### Registration Timeline
-- Early bird registration periods
-- Regular registration windows
-- Late registration policies
-- Waitlist management procedures
+**7:00 AM** - Registration opens. Players begin check-in and receiving materials
 
-## Check-In Operations
+**7:30 AM** - Range opens; players can warm up
 
-### Facility Setup
-- Registration area configuration
-- Equipment and material staging
-- Technology system testing
-- Staff positioning and workflow
+**8:00 AM** - Last check-in (or earlier depending on start time)
 
-### Check-In Workflow
-- Arrival processing and verification
-- Documentation collection and review
-- Equipment distribution procedures
-- Orientation and briefing coordination
+**8:20 AM** - Final player count; group assignments confirmed
 
-### Technology Integration
-- Barcode and RFID check-in systems
-- Digital signature collection
-- Photo identification verification
-- Real-time registration updates
+**8:30 AM** - Opening announcements; rules/format review; sponsor recognition
 
-## Staff Management
+## Tournament Play
 
-### Training Requirements
-- Registration system proficiency
-- Customer service excellence
-- Emergency procedure knowledge
-- Data privacy and security awareness
+**9:00 AM** - Shotgun start (or first tee time depending on format)
 
-### Role Assignments
-- Registration coordinators
-- Check-in assistants
-- Information desk personnel
-- Support and backup staff
+*Typical 18-hole round duration: 4-4.5 hours*
 
-## Participant Experience
+**1:00-1:30 PM** (approximate) - First groups finish
 
-### Welcome Procedures
-- Friendly greeting and assistance
-- Clear directional signage
-- Information packet distribution
-- Personal introduction opportunities
+**1:15 PM** (approximate) - Meal service begins as players finish
 
-### Support Services
-- Accessibility accommodation assistance
-- Language translation services
-- Medical information collection
-- Emergency contact procedures
+**1:30 PM** (approximate) - Final groups finishing in span
 
-## Data Management
+## Afternoon (Post-Round)
 
-### Information Security
-- Personal data protection protocols
-- Privacy policy compliance
-- Secure data transmission methods
-- Record retention procedures
+**2:00 PM** - Scoring finalized; results posted
 
-### Database Administration
-- Real-time data synchronization
-- Backup and recovery procedures
-- Data quality assurance processes
-- Reporting and analytics capabilities
+**2:15 PM** - Awards setup; participant gathering
 
-## Financial Operations
+**2:30 PM** - Awards ceremony begins
+- Thank sponsors and volunteers
+- Announce results and winners
+- Distribute prizes
+- Take group photos
 
-### Payment Processing
-- Multiple payment method acceptance
-- Transaction security measures
-- Refund and cancellation policies
-- Financial reconciliation procedures
+**3:00-3:30 PM** - Event concludes; teardown begins
 
-### Fee Structure Management
-- Registration fee categories
-- Discount and waiver applications
-- Sponsorship credit processing
-- Financial reporting requirements
+## Key Principles
 
-## Operational Excellence
-
-### Quality Control
-- Process efficiency monitoring
-- Error rate tracking and reduction
-- Participant satisfaction measurement
-- Continuous improvement initiatives
-
-### Contingency Planning
-- System failure backup procedures
-- Staff shortage response plans
-- Weather delay accommodations
-- Emergency registration protocols
-
-## Communication Strategies
-
-### Pre-Event Communications
-- Registration deadline reminders
-- Required document notifications
-- Check-in procedure explanations
-- Contact information provision
-
-### On-Site Communications
-- Real-time updates and announcements
-- Wayfinding and directional assistance
-- Emergency information dissemination
-
-## Legal and Compliance
-
-### Data Protection
-- GDPR and privacy regulation compliance
-- Consent form collection procedures
-- Data usage limitation policies
-
-### Accessibility Compliance
-- ADA accommodation procedures
-- Universal design implementation
-- Inclusive communication methods
-
-## Technology Maintenance
-
-### System Updates
-- Software version management
-- Security patch applications
-- Feature enhancement planning
-
-### Hardware Management
-- Equipment maintenance schedules
-- Backup system readiness
-- Technology support procedures
-
-## Performance Metrics
-
-### Operational KPIs
-- Registration completion rates
-- Check-in processing times
-- Participant satisfaction scores
-- Error and complaint tracking
-
-### Continuous Improvement
-- Process optimization studies
-- Technology upgrade evaluations
-- Staff training enhancement
-
-This manual provides the foundation for professional registration and check-in operations, ensuring efficient, secure, and participant-focused tournament administration.`,
-    tags: ['registration','procedures','manual','administration'],
+- Build in buffer time between major phases
+- Confirm arrival windows early with players
+- Have backup plan if scoring delays occur
+- Assign staff to each major time block
+- Communicate delays quickly if they occur`,
+    tags: ['schedule', 'timeline', 'template', 'event-day', 'operations'],
     relevance: 0.85
   },
   {
-    id: 'tie-break',
-    title: 'Tournament Tie-Breaking and Scoring Rules Handbook',
-    type: 'Rules',
-    summary: 'Comprehensive handbook for tie-breaking procedures, scoring methodologies, and dispute resolution in competitive golf tournaments.',
-    content: `# Tournament Tie-Breaking and Scoring Rules Handbook
+    id: 'scramble-tournament-format',
+    title: 'Scramble Tournament Format Guide',
+    type: 'Format-Guide',
+    summary: 'Comprehensive guide to organizing scramble format tournaments with best practices for rules, team composition, and administration.',
+    content: `# Scramble Tournament Format Guide
 
-## Introduction
-This handbook establishes authoritative procedures for tie-breaking and scoring in golf tournaments. Consistent application of these rules ensures fair competition and clear determination of tournament champions.
+A scramble is often the best choice when priority is player experience rather than pure competitive difficulty. It allows golfers of different abilities to contribute, keeps the atmosphere social, and usually improves pace compared with individual formats. However, scrambles only feel polished when procedures are clear.
 
-## Scoring Fundamentals
+## What Is a Scramble?
 
-### Basic Scoring Principles
-- Stroke count accuracy and verification
-- Handicap application procedures
-- Gross and net score calculations
-- Scorecard authentication requirements
+In a scramble, every player on a team tees off. The team chooses the best shot. All players move to that location and play next shot from there. This continues until hole is completed. The team records one score for the hole.
 
-### Electronic Scoring Systems
-- Real-time score capture and validation
-- Automated calculation algorithms
-- Audit trail maintenance
-- Dispute resolution support
+**Basic Example (Par 4):**
+1. All four players tee off
+2. Team selects best drive
+3. All four play second shot from that location
+4. Team selects best second shot
+5. All four play from there again
+6. Once putt is holed, that is team score
 
-## Tie-Breaking Procedures
+## Why Choose Scramble?
 
-### Primary Tie-Breakers
-1. **Sudden Death Playoff**
-   - Commences on designated hole
-   - Continues until winner determined
-   - Standard rules apply to playoff holes
+**Main Advantages:**
+- Highly inclusive for mixed-skill groups
+- Reduces pressure on beginners
+- Creates strong team interaction
+- Usually plays faster than stroke play
+- Keeps more players engaged throughout round
+- Supports sponsor/client entertainment well
 
-2. **Count-Back Method**
-   - Final hole score comparison
-   - Progressive hole elimination
-   - Back-nine/front-nine analysis
+**Best Use Cases:**
+- Charity fundraising tournaments
+- Corporate outings
+- Alumni and community events
+- Mixed-ability member events
 
-3. **Aggregate Score Comparison**
-   - Total score on specified holes
-   - Handicap-adjusted calculations
-   - Statistical tie resolution
+## Standard Team Structure
 
-### Advanced Tie-Breaking
+**4-Person Scramble:** Best overall option. Social, energetic, keeps each hole productive. However, can produce very low scores without handicap controls.
 
-#### Match Play Ties
-- Extra hole procedures
-- Concession and agreement protocols
-- Time limit considerations
+**3-Person Scramble:** Useful when field size requires it. Slightly faster but less beginner-friendly.
 
-#### Team Event Ties
-- Team aggregate comparisons
-- Individual player contributions
-- Combined score calculations
+**2-Person Scramble:** Better for more competitive events. Stronger competitive integrity but less beginner-friendly.
+
+**Recommended Default:** For most public-facing or mixed-skill tournaments, use 4-person scramble.
+
+## Core Rules to Define
+
+1. **Ball Placement Rule:** Within one scorecard length, one club length, or six inches? Can ball move from rough to fairway/fairway to green?
+
+2. **Bunker Rule:** Can team move ball out of bunker?
+
+3. **Putting Rule:** Must all putts be holed or can short putts count as made?
+
+4. **Hole Completion:** Must team actually hole out final putt?
+
+5. **Minimum Drive Requirement:** Common rule—each player must contribute 3-4 drives during 18-hole round
+
+6. **Handicap Method:** Use full handicap, percentage reduction, or gross scoring?`,
+    tags: ['scramble', 'format', 'guide', 'team-format', 'rules'],
+    relevance: 0.94
+  },
+  {
+    id: 'stroke-play-tournament',
+    title: 'Stroke Play Tournament Format Guide',
+    type: 'Format-Guide',
+    summary: 'Comprehensive guide for organizing stroke play tournaments with emphasis on administrative procedures and competitive integrity.',
+    content: `# Stroke Play Tournament Format Guide
+
+Stroke play is one of the most widely recognized tournament formats in golf. Each player counts total strokes taken during the round, and player with lowest total score wins. Compared with scramble, stroke play places greater responsibility on each player, creates stronger competitive separation, and demands more precision in rules, scoring, pace, and communication.
+
+## What Is Stroke Play?
+
+In stroke play, each player plays their own ball for entire round. Every stroke counts. Total strokes determine result.
+
+**Basic Principle:**
+- Player tees off on hole 1 and continues until holing out
+- Same happens on every hole
+- All strokes added together
+- Lowest total score wins
+
+**Best for:**
+- Club championships
+- Amateur competitions
+- Qualifiers
+- League championships
+- Serious member tournaments
+
+## Why Choose Stroke Play?
+
+**Main Advantages:**
+- Traditional and widely understood
+- Strong competitive integrity
+- Every shot matters
+- Easiest format for identifying best overall performance
+- Works well for championships
+- Supports both gross and net divisions
+
+**Potential Drawbacks:**
+- Slower than scramble formats
+- Less forgiving for beginners
+- More administrative burden
+- Greater need for rules knowledge
+- One bad hole can damage entire round
+
+Stroke play is right choice when competitive validity matters more than entertainment.
+
+## Core Rules to Define
+
+1. **Competition Type:** Gross stroke play, net stroke play, gross and net divisions, individual or team-based, single or multi-round?
+
+2. **Tees and Divisions:** Which tees for each division? (Championship back tees, regular middle, seniors forward, women forward, juniors age-appropriate)
+
+3. **Handicap Policy:** Verified handicap required? What source accepted? Maximum handicap allowance? Course handicap or playing handicap?
+
+4. **Maximum Score Rule:** Require holing out every hole or allow maximum score (double par, net double bogey)?
+
+5. **Tie-Break Procedure:** Sudden death playoff, aggregate playoff, scorecard playoff, split prizes, or other method?
+
+6. **Pace-of-Play Standard:** Include expected round time and basic pace obligations.
 
 ## Scoring Administration
 
-### Scorecard Management
-- Official scorecard requirements
-- Witness and verification procedures
-- Alteration and correction policies
-- Submission deadline enforcement
+**Scorecard Management:**
+- Official scorecards must be used
+- Players record own scores with witness verification
+- Scorecard signing confirms accuracy
 
-### Rules Official Oversight
-- Score review and validation
-- Discrepancy investigation procedures
-- Penalty assessment authority
-- Appeal process management
-
-## Dispute Resolution
-
-### Formal Appeal Process
-- Written appeal submission requirements
-- Committee review procedures
-- Decision timeline specifications
-- Final ruling documentation
-
-### Mediation Procedures
-- Neutral third-party involvement
-- Participant agreement facilitation
-- Compromise solution development
-- Documentation and record-keeping
-
-## Technology Integration
-
-### Automated Systems
-- Real-time scoring validation
-- Statistical analysis tools
-- Historical data comparison
-- Predictive outcome modeling
-
-### Digital Verification
-- Electronic signature authentication
-- Timestamp and audit logging
-- Blockchain-based score security
-- Mobile verification applications
-
-## Special Event Considerations
-
-### Championship Formats
-- Professional tournament standards
-- Television broadcast requirements
-- Sponsorship consideration integration
-
-### Amateur Competitions
-- Handicap system compliance
-- Local rule adaptations
-- Participant education requirements
-
-## Legal and Ethical Standards
-
-### Fair Play Requirements
-- Competitive integrity maintenance
-- Participant rights protection
-- Transparency and accountability
-- Anti-cheating measures
-
-### Regulatory Compliance
-- USGA/R&A rule adherence
-- Local association requirements
-- Insurance and liability considerations
-
-## Training and Certification
-
-### Official Training
-- Rules interpretation certification
-- Scoring system proficiency
-- Dispute resolution training
-- Ethics and conduct education
-
-### Participant Education
-- Pre-tournament rules briefings
-- Scoring procedure explanations
-- Appeal process awareness
-- Code of conduct review
-
-## Documentation and Records
-
-### Official Records
-- Scorecard archival procedures
-- Results certification requirements
-- Historical data preservation
-- Audit trail maintenance
-
-### Reporting Requirements
-- Tournament committee submissions
-- Association reporting obligations
-- Statistical analysis provision
-- Public disclosure standards
-
-## Continuous Improvement
-
-### Performance Analysis
-- Scoring accuracy metrics
-- Dispute frequency tracking
-- Process efficiency measurement
-- Participant satisfaction assessment
-
-### Rule Evolution
-- Industry best practice review
-- Technology integration assessment
-- Participant feedback incorporation
-- Regulatory compliance updates
-
-## Emergency Procedures
-
-### Scoring System Failures
-- Manual backup procedures
-- Alternative verification methods
-- Temporary rule modifications
-- Participant communication protocols
-
-### Unforeseen Circumstances
-- Weather-related scoring adjustments
-- Medical emergency considerations
-- Equipment failure accommodations
-- Time constraint modifications
-
-This handbook provides comprehensive guidance for professional scoring administration and tie-breaking procedures in golf tournaments.`,
-    tags: ['scoring','rules','handbook','tie-breaking'],
-    relevance: 0.81
+**Score Posting:**
+- Scores must be posted within specified timeframes
+- Discrepancies require immediate investigation
+- Official results require committee approval`,
+    tags: ['stroke-play', 'format', 'guide', 'competitive', 'individual'],
+    relevance: 0.93
   },
   {
-    id: 'ops-check',
-    title: 'Tournament Operations Checklist',
-    type: 'Checklist',
-    summary: 'Comprehensive operations checklist for tournament day readiness.',
-    content: 'A detailed operations checklist covering setup, volunteer coordination, hospitality, communications, and teardown. It helps organizers verify that every critical task is complete before the tournament opens and after it closes.',
-    tags: ['checklist','operations'],
-    relevance: 0.9
+    id: 'tie-breaking-scoring-rules',
+    title: 'Tie-Breaking and Scoring Rules Guide',
+    type: 'Guidelines',
+    summary: 'Decision-making framework for choosing scoring methods and tie-breaking procedures appropriate for tournament type and purpose.',
+    content: `# Tie-Breaking and Scoring Rules Guide
+
+Tie-breaking and scoring rules should support tournament purpose, reward right performance, reduce confusion, and remain easy to administer. Rules should match the tone of the event.
+
+## Core Principles for Good Scoring Rules
+
+A strong policy should be:
+- **Clear:** Players understand how scores recorded, standings determined, ties resolved before play begins
+- **Consistent:** Same rules apply to all players in same division
+- **Practical:** Realistic for available staffing, pace, and scoring technology
+- **Defensible:** Organizer can explain exactly how result determined
+- **Appropriate to format:** Scramble, stroke play, match play all require different approaches
+
+## Choosing a Scoring Method
+
+**Stroke Play:** Total number of strokes taken over round. Best when competitive and individual-based. Familiar, rewards consistency. Challenge: slower pace, can harm casual player experience.
+
+**Match Play:** Head-to-head comparison of hole results. Best when bracket-based, time available for elimination. Advantage: dramatic, plays faster. Challenge: less useful for large one-day fields, more complex administration.
+
+**Stableford/Points Systems:** Players earn points based on performance relative to par. Best when encouraging aggressive play, wide skill levels. Advantage: helps pace, keeps engagement. Challenge: less familiar, needs clear explanation.
+
+**Team Aggregate/Best Ball:** One or more scores count per hole. Best when social/team-based. Advantage: encourages participation, flexible. Challenge: requires careful tie-breaking.
+
+## Gross vs Net Scoring
+
+**Gross Scoring:** Actual strokes without handicap adjustment. Best for championships, elite fields.
+
+**Net Scoring:** Adjusts scores using handicaps. Best for member-guest, charity, mixed-skill fields.
+
+**Both:** Many tournaments benefit from both gross and net prizes, but decide if winner can win both categories. Remove gross winners from net eligibility to spread awards fairly.
+
+## Common Tie-Breaking Options
+
+**Option A: Sudden-Death Playoff**
+Players continue designated holes until winner determined. Best for championships, low-number ties. Exciting and decisive but requires time and course access.
+
+**Option B: Aggregate Playoff**
+Tied players compete over preselected set of holes (usually 3+). Reduces randomness, rewards stronger play across multiple holes.
+
+**Option C: Scorecard Playoff / Matching Cards**
+Compare scores on preselected holes or hole sequence without additional play.
+
+**Option D: Split Prizes**
+Award money/prizes equally to tied players. Best for social divisions where competitive intensity is lower.`,
+    tags: ['scoring', 'tie-breaking', 'rules', 'guidelines', 'procedures'],
+    relevance: 0.89
+  },
+  {
+    id: 'tournament-operations-checklist',
+    title: 'Tournament Operations Checklist Guide',
+    type: 'Checklist-Guide',
+    summary: 'Comprehensive operations planning guide organized by event phases from pre-event planning through post-event wrap-up.',
+    content: `# Tournament Operations Checklist Guide
+
+Tournament operations are systems, procedures, and day-of responsibilities that keep event running. Even well-designed tournament can fail with disorganized operations. This guide helps think through operational decisions with greatest impact.
+
+## Core Principles of Good Operations
+
+A strong operations plan should be:
+- **Clear:** Everyone knows what, when, and who is responsible
+- **Practical:** Reflects actual staffing, timing, facility constraints
+- **Redundant where needed:** Critical functions don't depend on single person
+- **Adaptable:** Can respond to delays, no-shows, weather, problems without losing control
+- **Aligned with purpose:** Competitive championship needs more formal structure; casual fundraiser benefits from lighter structure
+
+## Pre-Event Planning Phase
+
+These foundational decisions should be made well before tournament day:
+
+**Event Structure:** Format, start type, divisions, field size, eligibility, handicap policy, scoring method, tie-breaking, prizes.
+
+**Venue Coordination:** Course availability, range access, cart inventory, food/beverage arrangements, staffing expectations, setup access times, signage policy, emergency/weather protocols.
+
+**Budget and Payment:** Entry fee structure, sponsorship revenue, prize budget, meal budget, contingency funds, vendor payment deadlines, refund policy, payment tracking.
+
+**Registration System:** Platform/method, fields collected, deadlines, waivers, pairing requests, substitution process, waitlist process.
+
+**Staffing Structure:** How many staff/volunteers needed? What roles need dedicated ownership? Backups for critical tasks? Decision authority?
+
+## Final Week Preparation Phase
+
+Move from concept to execution:
+
+**Confirm Player Field:** Final player list, team assignments, tee times/hole assignments, handicap data, payment status, unresolved substitutions, contact info.
+
+**Confirm Facility Details:** First access time, course setup expectations, cart staging plan, registration location, meal timing, contest hole setup, scoring location, awards location.
+
+**Prepare Materials:** Master player list, team list, check-in sheets, starting assignments, scorecards, rules sheets, signage, sponsor signs, volunteer instructions, scripts, emergency contacts, prize list, scoring worksheets.
+
+**Assign Staff Responsibilities:** Registration lead, starter, sponsor coordinator, contest setup, cart coordination, scoring intake, leaderboard updates, issue resolution, awards setup, teardown coordinator.
+
+## Event Day Execution Phase
+
+**Setup (2-3 hours before start):** Final equipment check, volunteer assignments, course staging, registration area setup, signage installation, cart assignment, final walkthrough with all leaders.
+
+**Registration Phase:** Greet players, confirm names/info, distribute materials, answer questions, collect any final payments/waivers, direct to warm-up areas.
+
+**Start Procedures:** Golf course ready, volunteers in position, scorekeeping process explained, final rules review, opening remarks, start signal.
+
+**On-Course Operations:** Course staff monitoring, contact info distributed, scoring collection procedure clear, leaderboard updated, pace monitored.
+
+**Closeout Operations:** Final scoring verification, results posted, awards prepared, ceremony flow smooth, cleanup plan executed.
+
+## Post-Event Phase
+
+**Immediate:** Thank volunteers, sponsors, staff; send thank-you emails; distribute photos; address any player concerns.
+
+**Follow-Up:** Financial reconciliation, feedback collection, lessons learned documentation, plan for next year.`,
+    tags: ['operations', 'checklist', 'procedures', 'planning', 'execution'],
+    relevance: 0.90
+  },
+  {
+    id: 'weather-delay-rain-policy',
+    title: 'Weather Delay and Rain Policy',
+    type: 'Policy',
+    summary: 'Framework for weather-related tournament decisions including safety protocols, delay procedures, and communication authority.',
+    content: `# Weather Delay and Rain Policy
+
+Weather is one of few variables that can disrupt even well-planned event in minutes. Tournament with strong weather policy often still feels professionally run even if play interrupted or shortened. Safety must come first; fairness, hospitality, schedule considerations matter but should not override safety obligations.
+
+## Core Decision Principle
+
+A strong weather policy balances:
+- Player, staff, spectator safety (PRIMARY)
+- Fairness and competitive integrity
+- Course playability and turf protection
+- Event continuity and timing
+- Clear communication and decision authority
+
+## Define Decision Hierarchy Before Event
+
+**The Policy Should Identify:**
+- Who has authority to suspend play
+- Who has authority to resume play
+- Who has authority to cancel or shorten competition
+- How decisions coordinated with golf course staff
+- Who communicates decisions to players, volunteers, sponsors, guests
+
+**Typical Decision Roles:**
+- Tournament director or event chair
+- Golf course professional or operations lead
+- Rules committee for competitive events
+- Safety/operations lead if large event
+
+**Key Practice:** Do not rely on informal consensus during storm. Assign authority in advance and ensure staff knows who makes final call.
+
+## Types of Weather Problems
+
+**Lightning/Thunder:** Clearest safety issue, usually requires fastest action. Immediate risk to life. Typical response: suspend play immediately, move to shelter.
+
+**Heavy Rain:** May create safety threat or make course unplayable. Primary concerns: standing water, ball visibility, unsafe footing, turf damage. Can be temporary or prolonged.
+
+**Steady/Moderate Rain:** May not require automatic suspension but can affect pace, fairness, and later course viability.
+
+**High Wind:** Can create unsafe or unreasonable conditions. Concerns: falling branches, unstable tents/signage, unsafe ball movement, dangerous conditions.
+
+**Extreme Heat/Air Quality:** May create participant safety risks.
+
+## Weather Response Levels
+
+**Level 1 - Monitor:** Weather may affect later; no immediate action required. Monitor radar, alert staff, prepare comm.
+
+**Level 2 - Delay Start:** Conditions at/before start time make play unwise/unsafe. Hold players off course, communicate revised timeline.
+
+**Level 3 - Suspend Play:** Conditions become unsafe/unplayable during round. Stop play, direct to shelter, begin reassessment.
+
+**Level 4 - Resume Play:** Conditions improved enough to continue. Communicate clearly, allow appropriate restart time.
+
+**Level 5 - Shorten/Cancel:** Conditions make full completion unrealistic/unsafe/unfair. Apply event's policy for shortened results, postponement, or cancellation.
+
+## Safety Protocols
+
+**Lightning:** Most immediate threat. When thunder heard or lightning visible: immediate suspension, move to shelter, wait 15-20 minutes after last lightning/thunder before resuming.
+
+**Heavy Rain:** Assess standing water, ball visibility, player safety. Determine if temporary (resume soon) or prolonged (shorten/cancel).
+
+**Extreme Conditions:** Weather, heat, or air quality poses unacceptable risk. Director or designated official must act decisively regardless of schedule impact.
+
+## Communication Plan
+
+During suspension:
+- Clear signal to players (air horn, radio, visible message)
+- Direction to shelter or designated areas
+- Expected wait time if known
+- Status updates every 15-20 minutes
+- Clear resumption signal when conditions improve
+
+Post-resolution:
+- Explain decision to players and media
+- Document decision and conditions for records
+- Inform sponsors and other stakeholders
+- Plan for rescheduled/shortened results administration`,
+    tags: ['weather', 'safety', 'policy', 'emergency', 'procedures'],
+    relevance: 0.91
   }
-]
+];
