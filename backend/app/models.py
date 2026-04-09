@@ -15,6 +15,7 @@ class ChatRequest(BaseModel):
     tournament: Dict[str, Any]
     history: List[HistoryMessage] = []
     phase: str = "planning"
+    working_memory: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ChatSource(BaseModel):
@@ -30,6 +31,7 @@ class ChatResponse(BaseModel):
     ready_for_generation: bool = False
     needs_regeneration: bool = False
     sources: List[ChatSource] = Field(default_factory=list)
+    working_memory: Dict[str, Any] = Field(default_factory=dict)
 
 
 class GenerateRequest(BaseModel):

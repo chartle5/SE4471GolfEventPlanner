@@ -13,6 +13,7 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
         tournament=payload.tournament,
         history=history,
         phase=payload.phase,
+        working_memory=payload.working_memory,
     )
     return ChatResponse(
         message=result["message"],
@@ -20,4 +21,5 @@ async def chat_endpoint(payload: ChatRequest) -> ChatResponse:
         ready_for_generation=result.get("ready_for_generation", False),
         needs_regeneration=result.get("needs_regeneration", False),
         sources=result.get("sources", []),
+        working_memory=result.get("working_memory", {}),
     )

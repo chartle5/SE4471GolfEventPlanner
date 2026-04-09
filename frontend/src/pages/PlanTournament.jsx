@@ -191,6 +191,7 @@ export default function PlanTournament() {
   const [generationDone, setGenerationDone] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [savedReservationId, setSavedReservationId] = useState(null)
+  const [workingMemory, setWorkingMemory] = useState({})
   const [ragStatus, setRagStatus] = useState({
     state: 'idle',
     ready: false,
@@ -356,6 +357,7 @@ export default function PlanTournament() {
           tournament,
           history: historyForRequest,
           phase,
+          working_memory: workingMemory,
         }),
       })
 
@@ -372,6 +374,10 @@ export default function PlanTournament() {
 
       if (data.tournament) {
         setTournament(data.tournament)
+      }
+
+      if (data.working_memory) {
+        setWorkingMemory(data.working_memory)
       }
 
       if (data.ready_for_generation) {
