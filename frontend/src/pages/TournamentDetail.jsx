@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import Icon from '../components/Icon'
+import Modal from '../components/Modal'
+import ConfirmDialog from '../components/ConfirmDialog'
+import Toast from '../components/Toast'
+import ScheduleEditor from '../components/ScheduleEditor'
 
 export default function TournamentDetail() {
   const { id } = useParams()
@@ -11,7 +16,6 @@ export default function TournamentDetail() {
   const [liveData, setLiveData] = useState(null)
   const [notFound, setNotFound] = useState(false)
 
-  
   // Shared modal state
   const [modal, setModal] = useState(null) // 'invite'|'schedule'|'ruleSheet'|'fnb'|'clubSheet'|'registrants'
   const [emails, setEmails] = useState('')
@@ -20,6 +24,17 @@ export default function TournamentDetail() {
   const [clubOrgPhone, setClubOrgPhone] = useState('')
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState(null)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+
+  // Schedule editing (drag & drop / shuffle / seed) + toasts
+  const [toast, setToast] = useState(null)
+  const [savingOrder, setSavingOrder] = useState(false)
+  const [shuffling, setShuffling] = useState(false)
+  const [teamRegistrations, setTeamRegistrations] = useState([])
+  const [seedModal, setSeedModal] = useState(false)
+  const [seedCount, setSeedCount] = useState('')
+  const [seedClear, setSeedClear] = useState(false)
+  const [seeding, setSeeding] = useState(false)
 
   // Cart placards
   const [placardLoading, setPlacardLoading] = useState(false)
@@ -53,6 +68,113 @@ export default function TournamentDetail() {
     const timer = setInterval(fetchLive, 15000)
     return () => clearInterval(timer)
   }, [res?.tournament_id])
+
+  // Load registrations so the schedule editor can bundle teammates together.
+  async function loadTeamRegistrations() {
+    if (!res?.tournament_id) return
+    try {
+      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/registrations`, { headers: authHeaders() })
+      if (r.ok) {
+        const data = await r.json()
+        setTeamRegistrations(data.registrations || [])
+      }
+    } catch { /* non-fatal — editor falls back to all-singles */ }
+  }
+
+  useEffect(() => {
+    loadTeamRegistrations()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.tournament_id])
+
+  // Map "First Last" → team name for registered team players.
+  const teamMap = React.useMemo(() => {
+    const map = {}
+    for (const reg of teamRegistrations) {
+      const team = (reg.team_name || '').trim()
+      if (team) map[`${reg.first_name} ${reg.last_name}`] = team
+    }
+    return map
+  }, [teamRegistrations])
+
+  async function refreshSchedule() {
+    if (!res?.tournament_id) return
+    try {
+      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/schedule`)
+      if (r.ok) setLiveData(await r.json())
+    } catch { /* ignore */ }
+    loadTeamRegistrations()
+  }
+
+  async function handleSaveOrder(newSchedule) {
+    setSavingOrder(true)
+    try {
+      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/reorder`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ schedule: newSchedule }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setLiveData(prev => ({ ...(prev || {}), schedule: d.schedule }))
+        setToast({ ok: true, message: 'Tee order saved.' })
+        return true
+      }
+      setToast({ ok: false, message: d.detail || 'Could not save the new order.' })
+      return false
+    } catch {
+      setToast({ ok: false, message: 'Could not reach the server.' })
+      return false
+    } finally {
+      setSavingOrder(false)
+    }
+  }
+
+  async function handleShuffle() {
+    if (shuffling || !res?.tournament_id) return
+    setShuffling(true)
+    try {
+      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/shuffle`, { method: 'POST' })
+      const d = await r.json()
+      if (r.ok) {
+        setLiveData(prev => ({ ...(prev || {}), schedule: d.schedule }))
+        setToast({ ok: true, message: 'Players shuffled.' })
+      } else {
+        setToast({ ok: false, message: d.detail || 'Shuffle failed.' })
+      }
+    } catch {
+      setToast({ ok: false, message: 'Could not reach the server.' })
+    } finally {
+      setShuffling(false)
+    }
+  }
+
+  async function handleSeedPlayers() {
+    const count = parseInt(seedCount, 10)
+    if (!Number.isInteger(count) || count < 1) {
+      setToast({ ok: false, message: 'Enter how many test players to generate.' })
+      return
+    }
+    setSeeding(true)
+    try {
+      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/seed-players`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ count, clear: seedClear }),
+      })
+      const d = await r.json()
+      if (r.ok) {
+        setSeedModal(false)
+        setToast({ ok: d.success, message: d.success ? `✅ ${d.created} test player${d.created !== 1 ? 's' : ''} registered successfully` : d.message })
+        await refreshSchedule()
+      } else {
+        setToast({ ok: false, message: d.detail || 'Failed to generate test players.' })
+      }
+    } catch {
+      setToast({ ok: false, message: 'Could not reach the server.' })
+    } finally {
+      setSeeding(false)
+    }
+  }
 
   function openModal(type) {
     setModal(type)
@@ -230,7 +352,6 @@ export default function TournamentDetail() {
   }
 
   function handleDelete() {
-    if (!window.confirm('Remove this reservation? This cannot be undone.')) return
     const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
     const updated = stored.filter(r => String(r.id) !== String(id))
     localStorage.setItem('savedReservations', JSON.stringify(updated))
@@ -239,189 +360,258 @@ export default function TournamentDetail() {
 
   if (notFound) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-        <h2>Tournament not found</h2>
-        <p>This reservation may have been deleted.</p>
-        <button onClick={() => navigate('/reservations')} style={solidBtn('#2563eb')}>
-          Back to Reservations
+      <div className="empty-state" style={{ marginTop: 24 }}>
+        <div className="empty-icon"><Icon name="trophy" size={26} /></div>
+        <h3>Tournament not found</h3>
+        <p style={{ margin: '6px 0 18px' }}>This reservation may have been deleted.</p>
+        <button onClick={() => navigate('/reservations')} className="btn btn-primary">
+          <Icon name="arrowLeft" size={16} /> Back to Reservations
         </button>
       </div>
     )
   }
 
   if (!res) {
-    return <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>Loading…</div>
+    return <div className="muted" style={{ padding: 40, textAlign: 'center' }}>Loading…</div>
   }
 
   const t = res.tournament || {}
   const displaySchedule = liveData?.schedule || res.schedule || []
+  const isFinalized = liveData?.status === 'finalized'
+  const totalSlots = liveData?.total_players ?? t.playerCount ?? 0
+  const registeredCount = liveData?.players_registered ?? 0
+  const remainingSlots = Math.max(0, totalSlots - registeredCount)
+  const canEditSchedule = !!res.tournament_id && !isFinalized && displaySchedule.length > 0
 
   return (
     <div>
       {/* Breadcrumb */}
-      <button
-        onClick={() => navigate('/reservations')}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#2563eb', fontSize: 14, fontWeight: 600, padding: 0, marginBottom: 8 }}
-      >
-        ← Reservations
+      <button onClick={() => navigate('/reservations')} className="btn btn-ghost btn-sm" style={{ marginBottom: 14 }}>
+        <Icon name="arrowLeft" size={15} /> Reservations
       </button>
 
-      <h1 style={{ margin: '4px 0 0' }}>{t.name || 'Tournament'}</h1>
-      <div className="muted small" style={{ marginBottom: 20 }}>
-        {[t.date, t.venue, t.format].filter(Boolean).join(' · ')}
-        {t.playerCount > 0 && <span> · {t.playerCount} players</span>}
-        {res.tournament_id && (
-          <span style={{ marginLeft: 10, background: '#d1fae5', color: '#166534', borderRadius: 4, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>
-            Saved to DB
+      <div className="page-head">
+        <h1 className="page-title">{t.name || 'Tournament'}</h1>
+        <div className="page-sub" style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center' }}>
+          <span>
+            {[t.date, t.venue, t.format].filter(Boolean).join(' · ')}
+            {t.playerCount > 0 && <span> · {t.playerCount} players</span>}
           </span>
-        )}
+          {res.tournament_id && <span className="badge badge-dot">Saved to DB</span>}
+        </div>
       </div>
 
       {/* Registration progress */}
       {liveData?.players_registered != null && (
-        <div style={{ marginBottom: 16, padding: '10px 16px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8, fontSize: 13 }}>
-          <strong style={{ color: '#166534' }}>
-            Registration: {liveData.players_registered} / {liveData.total_players} players signed up
-          </strong>
-          {(res.registration_token || liveData.registration_token) && (
-            <div style={{ marginTop: 4, color: '#374151', fontSize: 12 }}>
-              Registration link: {window.location.origin}/player-register/{res.registration_token || liveData.registration_token}
-            </div>
-          )}
+        <div className="notice notice-success" style={{ marginBottom: 18 }}>
+          <Icon name="users" size={17} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div>
+            <strong>Registration: {liveData.players_registered} / {liveData.total_players} players signed up</strong>
+            {(res.registration_token || liveData.registration_token) && (
+              <div style={{ marginTop: 4, color: 'var(--slate)', fontSize: 12 }}>
+                Registration link: {window.location.origin}/player-register/{res.registration_token || liveData.registration_token}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
       {/* ── Tee Schedule ── */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
-          <span style={{ fontWeight: 700, fontSize: 15 }}>
-            Tee Schedule
-            {liveData && (
-              <span style={{ fontSize: 11, background: '#d1fae5', color: '#166534', borderRadius: 4, padding: '1px 7px', fontWeight: 500, marginLeft: 8 }}>Live</span>
-            )}
+      <div className="card card-flush" style={{ marginBottom: 20 }}>
+        <div className="card-head">
+          <span className="card-title">
+            <Icon name="calendar" size={18} style={{ color: 'var(--fairway)' }} /> Tee Schedule
+            {liveData && <span className="badge badge-dot" style={{ marginLeft: 4 }}>Live</span>}
           </span>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => openModal('invite')} style={actionBtn('#2563eb')}>Send Invite</button>
-            <button onClick={() => openModal('schedule')} style={actionBtn('#166534')}>Send Schedule</button>
+            <button onClick={() => openModal('invite')} className="btn btn-sm" style={{ background: 'var(--info)' }}>
+              <Icon name="mail" size={15} /> Send Invite
+            </button>
+            <button onClick={() => openModal('schedule')} className="btn btn-primary btn-sm">
+              <Icon name="send" size={15} /> Send Schedule
+            </button>
             {res.tournament_id && (
               <>
-                <button onClick={openRegistrantsModal} style={actionBtn('#7c3aed')}>View Registrants</button>
-                <button onClick={handleDownloadPlacards} disabled={placardLoading} style={actionBtn('#0369a1')}>
-                  {placardLoading ? 'Generating…' : 'Cart Placards'}
+                <button onClick={openRegistrantsModal} className="btn btn-sm" style={{ background: '#6D4C8A' }}>
+                  <Icon name="users" size={15} /> View Registrants
                 </button>
+                <button onClick={handleDownloadPlacards} disabled={placardLoading} className="btn btn-sm" style={{ background: 'var(--info)' }}>
+                  {placardLoading ? <><span className="spinner" /> Generating…</> : <><Icon name="cart" size={15} /> Cart Placards</>}
+                </button>
+                {!isFinalized && (
+                  <button onClick={handleShuffle} disabled={shuffling} className="btn btn-ghost btn-sm">
+                    {shuffling ? <><span className="spinner" /> Shuffling…</> : <>Shuffle</>}
+                  </button>
+                )}
+                {!isFinalized && (
+                  <button
+                    onClick={() => { setSeedModal(true); setSeedCount(String(Math.max(1, remainingSlots))); setSeedClear(false) }}
+                    className="btn btn-ghost btn-sm"
+                    title="Developer/testing tool — registers synthetic players"
+                  >
+                    <Icon name="users" size={15} /> Generate Test Players
+                  </button>
+                )}
               </>
             )}
           </div>
         </div>
-        {displaySchedule.length > 0 ? (
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-            <thead>
-              <tr style={{ background: '#f9fafb' }}>
-                <th style={thStyle}>Group</th>
-                <th style={thStyle}>Tee Time</th>
-                <th style={thStyle}>Players</th>
-              </tr>
-            </thead>
-            <tbody>
-              {displaySchedule.map(row => (
-                <tr key={row.group} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                  <td style={tdStyle}>Group {row.group}</td>
-                  <td style={{ ...tdStyle, fontWeight: 600, color: '#166534' }}>{row.teeTime}</td>
-                  <td style={tdStyle}>{row.players.join(', ')}</td>
+        {canEditSchedule ? (
+          <div style={{ paddingTop: 16 }}>
+            <ScheduleEditor
+              schedule={displaySchedule}
+              teamMap={teamMap}
+              onSave={handleSaveOrder}
+              saving={savingOrder}
+            />
+          </div>
+        ) : displaySchedule.length > 0 ? (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Group</th>
+                  <th>Tee Time</th>
+                  <th>Players</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {displaySchedule.map(row => (
+                  <tr key={row.group}>
+                    <td>Group {row.group}</td>
+                    <td className="accent">{row.teeTime}</td>
+                    <td>{row.players.join(', ')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         ) : (
-          <div style={{ padding: 20, color: '#9ca3af', fontSize: 13 }}>No schedule data available.</div>
+          <div className="muted" style={{ padding: 22, fontSize: 13 }}>No schedule data available.</div>
         )}
       </div>
 
       {/* ── Tournament Brochure ── */}
       {res.brochure && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15 }}>
-            Tournament Brochure
-          </div>
-          <div style={{ padding: '12px 20px', fontSize: 13, color: '#374151' }}>
+        <DocCard icon="mail" title="Tournament Brochure">
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
             <strong>Subject:</strong> {res.brochure.subject}
             {res.brochure.to && <div style={{ marginTop: 4 }}><strong>To:</strong> {res.brochure.to}</div>}
           </div>
-          <div style={{ margin: '0 20px 16px', background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 6, padding: '12px 16px' }}>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#374151', lineHeight: 1.6 }}>
-              {res.brochure.body}
-            </pre>
-          </div>
-        </div>
+          <DocPreview tone="neutral">{res.brochure.body}</DocPreview>
+        </DocCard>
       )}
 
       {/* ── Player Information Guide ── */}
       {res.rule_sheet && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Player Information Guide</span>
-            <button onClick={() => openModal('ruleSheet')} style={actionBtn('#0891b2')}>Send to Players</button>
-          </div>
-          <div style={{ padding: '12px 20px', fontSize: 13, color: '#374151' }}>
+        <DocCard
+          icon="doc"
+          title="Player Information Guide"
+          action={<button onClick={() => openModal('ruleSheet')} className="btn btn-sm" style={{ background: 'var(--info)' }}><Icon name="send" size={15} /> Send to Players</button>}
+        >
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
             <strong>Subject:</strong> {res.rule_sheet.subject}
           </div>
-          <div style={{ margin: '0 20px 16px', background: '#f0fdfa', border: '1px solid #99f6e4', borderRadius: 6, padding: '12px 16px' }}>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#134e4a', lineHeight: 1.6 }}>
-              {res.rule_sheet.body?.slice(0, 800)}{res.rule_sheet.body?.length > 800 ? '\n…' : ''}
-            </pre>
-          </div>
-        </div>
+          <DocPreview tone="teal">
+            {res.rule_sheet.body?.slice(0, 800)}{res.rule_sheet.body?.length > 800 ? '\n…' : ''}
+          </DocPreview>
+        </DocCard>
       )}
 
       {/* ── F&B Summary ── */}
       {res.fnb_summary && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Food &amp; Beverage Summary</span>
-            <button onClick={() => openModal('fnb')} style={actionBtn('#b45309')}>Send to Caterer</button>
-          </div>
-          <div style={{ padding: '12px 20px', fontSize: 13, color: '#374151' }}>
+        <DocCard
+          icon="food"
+          title="Food & Beverage Summary"
+          action={<button onClick={() => openModal('fnb')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send to Caterer</button>}
+        >
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
             <strong>Subject:</strong> {res.fnb_summary.subject}
           </div>
-          <div style={{ margin: '0 20px 16px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, padding: '12px 16px' }}>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#78350f', lineHeight: 1.6 }}>
-              {res.fnb_summary.body?.slice(0, 800)}{res.fnb_summary.body?.length > 800 ? '\n…' : ''}
-            </pre>
-          </div>
-        </div>
+          <DocPreview tone="amber">
+            {res.fnb_summary.body?.slice(0, 800)}{res.fnb_summary.body?.length > 800 ? '\n…' : ''}
+          </DocPreview>
+        </DocCard>
       )}
 
       {/* ── Club Operations Sheet ── */}
       {res.tournament_id && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginBottom: 20 }}>
-          <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Club Operations Sheet</span>
-            <button onClick={() => openModal('clubSheet')} style={actionBtn('#d97706')}>Send Club Sheet</button>
-          </div>
-          <div style={{ padding: '12px 20px', fontSize: 13, color: '#6b7280' }}>
+        <DocCard
+          icon="pin"
+          title="Club Operations Sheet"
+          action={<button onClick={() => openModal('clubSheet')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send Club Sheet</button>}
+        >
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--muted)' }}>
             Full operations document for golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact.
           </div>
-        </div>
+        </DocCard>
       )}
 
       {/* Delete */}
-      <div style={{ marginTop: 8, paddingTop: 20, borderTop: '1px solid #e5e7eb', display: 'flex', justifyContent: 'flex-end' }}>
-        <button
-          onClick={handleDelete}
-          style={{ background: 'transparent', border: '1px solid #dc2626', color: '#dc2626', padding: '7px 18px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
-        >
-          Delete Tournament
+      <div style={{ marginTop: 8, paddingTop: 20, borderTop: '1px solid var(--line)', display: 'flex', justifyContent: 'flex-end' }}>
+        <button onClick={() => setConfirmDelete(true)} className="btn btn-danger">
+          <Icon name="trash" size={16} /> Delete Tournament
         </button>
       </div>
 
+      {confirmDelete && (
+        <ConfirmDialog
+          title="Delete tournament?"
+          message="This removes the saved reservation from this device. This cannot be undone."
+          confirmLabel="Delete"
+          onConfirm={() => { setConfirmDelete(false); handleDelete() }}
+          onCancel={() => setConfirmDelete(false)}
+        />
+      )}
+
       {/* ── Modals ── */}
+
+      {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+
+      {seedModal && (
+        <Modal
+          title="Generate Test Players"
+          subtitle={t.name}
+          tone="plum"
+          note="Developer/testing tool — registers synthetic players (realistic names, phone numbers, ~15% rental clubs, and team assignment for team events)."
+          onClose={() => { if (!seeding) setSeedModal(false) }}
+          closeDisabled={seeding}
+          footer={
+            <>
+              <button onClick={() => setSeedModal(false)} disabled={seeding} className="btn btn-ghost btn-sm">Cancel</button>
+              <button onClick={handleSeedPlayers} disabled={seeding} className="btn btn-primary btn-sm">
+                {seeding ? <><span className="spinner" /> Generating…</> : <><Icon name="users" size={15} /> Generate</>}
+              </button>
+            </>
+          }
+        >
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label className="field-label">How many players?</label>
+            <input
+              type="number"
+              min={1}
+              max={remainingSlots || undefined}
+              value={seedCount}
+              onChange={e => setSeedCount(e.target.value)}
+              disabled={seeding}
+            />
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>
+              {remainingSlots} open slot{remainingSlots !== 1 ? 's' : ''} remaining.
+            </div>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600, color: 'var(--slate)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={seedClear} onChange={e => setSeedClear(e.target.checked)} disabled={seeding} />
+            Clear existing registrations first
+          </label>
+        </Modal>
+      )}
 
       {modal === 'invite' && (
         <EmailModal
           title="Send Invite"
           subtitle={t.name}
-          color="#1d4ed8"
-          description={`Sends tournament details + a "Register Now" button so players can claim a tee-time slot.${
+          tone="info"
+          note={`Sends tournament details + a "Register Now" button so players can claim a tee-time slot.${
             !res.registration_token && !liveData?.registration_token
               ? ' ⚠️ No registration link found — make sure you are logged in and the tournament was saved to the database.'
               : ''
@@ -440,8 +630,8 @@ export default function TournamentDetail() {
         <EmailModal
           title="Send Schedule"
           subtitle={t.name}
-          color="#166534"
-          description="Sends the full tee-time brochure with all player assignments."
+          tone="green"
+          note="Sends the full tee-time brochure with all player assignments."
           emails={emails}
           onEmailsChange={setEmails}
           sending={sending}
@@ -456,8 +646,8 @@ export default function TournamentDetail() {
         <EmailModal
           title="Send Player Information Guide"
           subtitle={t.name}
-          color="#0891b2"
-          description="Emails the full Player Information Guide — event details, format, conduct rules, and catering info."
+          tone="info"
+          note="Emails the full Player Information Guide — event details, format, conduct rules, and catering info."
           emails={emails}
           onEmailsChange={setEmails}
           sending={sending}
@@ -472,8 +662,8 @@ export default function TournamentDetail() {
         <EmailModal
           title="Send Food & Beverage Summary"
           subtitle={t.name}
-          color="#b45309"
-          description="Emails the Banquet Order Sheet to your caterer or venue contact — covers guest count, budget, style, and dietary requirements."
+          tone="gold"
+          note="Emails the Banquet Order Sheet to your caterer or venue contact — covers guest count, budget, style, and dietary requirements."
           emails={emails}
           onEmailsChange={setEmails}
           sending={sending}
@@ -485,106 +675,93 @@ export default function TournamentDetail() {
       )}
 
       {modal === 'clubSheet' && (
-        <div
-          onClick={closeModal}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        <Modal
+          title="Send Club Operations Sheet"
+          subtitle={t.name}
+          tone="gold"
+          note="Sends the full operations sheet to golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact."
+          onClose={closeModal}
+          closeDisabled={sending}
+          footer={<ModalActions sending={sending} onClose={closeModal} onSend={handleSendClubSheet} sendLabel="Send Club Sheet" />}
         >
-          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-            <ModalHeader title="Send Club Operations Sheet" subtitle={t.name} color="#d97706" onClose={closeModal} disabled={sending} />
-            <div style={{ background: '#fffbeb', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
-              Sends the full operations sheet to golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact.
-            </div>
-            <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <div>
-                <label style={labelStyle}>Club Email(s)</label>
-                <textarea
-                  value={emails}
-                  onChange={e => setEmails(e.target.value)}
-                  placeholder="e.g. proshop@venue.com"
-                  rows={3}
-                  disabled={sending}
-                  style={textareaStyle}
-                />
-                <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 3 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
-              </div>
-              <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12 }}>
-                <div style={{ fontWeight: 600, fontSize: 13, color: '#6b7280', marginBottom: 10 }}>Your Contact Info (shown at bottom of sheet)</div>
-                {[
-                  ['Your Name', clubOrgName, setClubOrgName, 'e.g. Jane Smith'],
-                  ['Your Email', clubOrgEmail, setClubOrgEmail, 'e.g. jane@example.com'],
-                  ['Your Phone', clubOrgPhone, setClubOrgPhone, 'e.g. 555-867-5309'],
-                ].map(([label, val, setter, ph]) => (
-                  <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
-                    <label style={{ width: 90, fontSize: 13, fontWeight: 500, flexShrink: 0 }}>{label}</label>
-                    <input
-                      type="text"
-                      value={val}
-                      onChange={e => setter(e.target.value)}
-                      placeholder={ph}
-                      disabled={sending}
-                      style={{ flex: 1, border: '1px solid #d1d5db', borderRadius: 6, padding: '7px 10px', fontSize: 13, outline: 'none', color: '#111827' }}
-                    />
-                  </div>
-                ))}
-              </div>
-              {sendResult && <FeedbackBanner result={sendResult} />}
-            </div>
-            <ModalFooter sending={sending} onClose={closeModal} onSend={handleSendClubSheet} sendLabel="Send Club Sheet" color="#d97706" />
+          <div className="field" style={{ marginBottom: 14 }}>
+            <label className="field-label">Club Email(s)</label>
+            <textarea
+              value={emails}
+              onChange={e => setEmails(e.target.value)}
+              placeholder="e.g. proshop@venue.com"
+              rows={3}
+              disabled={sending}
+              style={{ resize: 'vertical' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
           </div>
-        </div>
+          <div style={{ borderTop: '1px solid var(--line-soft)', paddingTop: 14 }}>
+            <div style={{ fontWeight: 600, fontSize: 12.5, color: 'var(--muted)', marginBottom: 10 }}>Your Contact Info (shown at bottom of sheet)</div>
+            {[
+              ['Your Name', clubOrgName, setClubOrgName, 'e.g. Jane Smith'],
+              ['Your Email', clubOrgEmail, setClubOrgEmail, 'e.g. jane@example.com'],
+              ['Your Phone', clubOrgPhone, setClubOrgPhone, 'e.g. 555-867-5309'],
+            ].map(([label, val, setter, ph]) => (
+              <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                <label style={{ width: 90, fontSize: 13, fontWeight: 500, flexShrink: 0, color: 'var(--slate)' }}>{label}</label>
+                <input type="text" value={val} onChange={e => setter(e.target.value)} placeholder={ph} disabled={sending} />
+              </div>
+            ))}
+          </div>
+          {sendResult && <div style={{ marginTop: 14 }}><FeedbackBanner result={sendResult} /></div>}
+        </Modal>
       )}
 
       {modal === 'registrants' && (
-        <div
-          onClick={() => { if (!registrantsLoading) setModal(null) }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
+        <Modal
+          title="Registered Players"
+          subtitle={t.name}
+          tone="plum"
+          onClose={() => { if (!registrantsLoading) setModal(null) }}
+          maxWidth={820}
+          footer={<button onClick={() => setModal(null)} className="btn btn-ghost btn-sm">Close</button>}
         >
-          <div
-            onClick={e => e.stopPropagation()}
-            style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 820, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}
-          >
-            <ModalHeader title="Registered Players" subtitle={t.name} color="#7c3aed" onClose={() => setModal(null)} />
-            <div style={{ overflowY: 'auto', flex: 1, padding: '20px 24px' }}>
-              {registrantsLoading && <p style={{ color: '#6b7280', textAlign: 'center' }}>Loading…</p>}
-              {registrantsData?.error && <p style={{ color: '#dc2626', textAlign: 'center' }}>{registrantsData.error}</p>}
-              {registrantsData && !registrantsData.error && (
-                registrantsData.registrations?.length === 0 ? (
-                  <p style={{ color: '#6b7280', textAlign: 'center', padding: '24px 0' }}>No players have registered yet.</p>
-                ) : (
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                    <thead>
-                      <tr style={{ background: '#f3f4f6', borderBottom: '2px solid #e5e7eb' }}>
-                        <th style={regThStyle}>#</th>
-                        <th style={regThStyle}>Name</th>
-                        <th style={regThStyle}>Phone</th>
-                        <th style={regThStyle}>Rental Clubs</th>
-                        {registrantsData.event_type === 'team' && <th style={regThStyle}>Team</th>}
-                        <th style={regThStyle}>Tee Slot</th>
-                        <th style={regThStyle}>Registered At</th>
+          {registrantsLoading && <p className="muted" style={{ textAlign: 'center', padding: '20px 0' }}>Loading…</p>}
+          {registrantsData?.error && <p style={{ color: 'var(--danger)', textAlign: 'center' }}>{registrantsData.error}</p>}
+          {registrantsData && !registrantsData.error && (
+            registrantsData.registrations?.length === 0 ? (
+              <div className="empty-state" style={{ border: 'none', padding: '24px 0' }}>
+                <div className="empty-icon"><Icon name="users" size={24} /></div>
+                <p style={{ margin: 0 }}>No players have registered yet.</p>
+              </div>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>#</th>
+                      <th>Name</th>
+                      <th>Phone</th>
+                      <th>Rental Clubs</th>
+                      {registrantsData.event_type === 'team' && <th>Team</th>}
+                      <th>Tee Slot</th>
+                      <th>Registered At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {registrantsData.registrations.map((reg, i) => (
+                      <tr key={reg.registration_id || i}>
+                        <td>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{reg.first_name} {reg.last_name}</td>
+                        <td>{reg.phone_number || '—'}</td>
+                        <td>{reg.rental_clubs ? `Yes — ${reg.club_hand === 'left' ? 'Left' : 'Right'} Handed` : 'No'}</td>
+                        {registrantsData.event_type === 'team' && <td>{reg.team_name || '—'}</td>}
+                        <td>{reg.slot_description || '—'}</td>
+                        <td>{reg.registered_at ? new Date(reg.registered_at).toLocaleString() : '—'}</td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {registrantsData.registrations.map((reg, i) => (
-                        <tr key={reg.registration_id || i} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                          <td style={regTdStyle}>{i + 1}</td>
-                          <td style={{ ...regTdStyle, fontWeight: 600 }}>{reg.first_name} {reg.last_name}</td>
-                          <td style={regTdStyle}>{reg.phone_number || '—'}</td>
-                          <td style={regTdStyle}>{reg.rental_clubs ? `Yes — ${reg.club_hand === 'left' ? 'Left' : 'Right'} Handed` : 'No'}</td>
-                          {registrantsData.event_type === 'team' && <td style={regTdStyle}>{reg.team_name || '—'}</td>}
-                          <td style={regTdStyle}>{reg.slot_description || '—'}</td>
-                          <td style={regTdStyle}>{reg.registered_at ? new Date(reg.registered_at).toLocaleString() : '—'}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )
-              )}
-            </div>
-            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end' }}>
-              <button onClick={() => setModal(null)} style={outlineBtnStyle}>Close</button>
-            </div>
-          </div>
-        </div>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )
+          )}
+        </Modal>
       )}
     </div>
   )
@@ -592,83 +769,81 @@ export default function TournamentDetail() {
 
 // ── Shared sub-components ──
 
-function EmailModal({ title, subtitle, color, description, emails, onEmailsChange, sending, sendResult, onClose, onSend, sendLabel }) {
+function DocCard({ icon, title, action, children }) {
   return (
-    <div onClick={onClose} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-      <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 520, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-        <ModalHeader title={title} subtitle={subtitle} color={color} onClose={onClose} disabled={sending} />
-        {description && (
-          <div style={{ background: '#f9fafb', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
-            {description}
-          </div>
-        )}
-        <div style={{ padding: '20px 24px' }}>
-          <label style={labelStyle}>Recipient Emails</label>
-          <textarea
-            value={emails}
-            onChange={e => onEmailsChange(e.target.value)}
-            placeholder="e.g. alice@example.com bob@example.com"
-            rows={3}
-            disabled={sending}
-            style={textareaStyle}
-          />
-          <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
-          {sendResult && <div style={{ marginTop: 12 }}><FeedbackBanner result={sendResult} /></div>}
-        </div>
-        <ModalFooter sending={sending} onClose={onClose} onSend={onSend} sendLabel={sendLabel} color={color} />
+    <div className="card card-flush" style={{ marginBottom: 20 }}>
+      <div className="card-head">
+        <span className="card-title">
+          <Icon name={icon} size={18} style={{ color: 'var(--fairway)' }} /> {title}
+        </span>
+        {action}
       </div>
+      {children}
     </div>
   )
 }
 
-function ModalHeader({ title, subtitle, color, onClose, disabled }) {
+const previewTones = {
+  neutral: { background: 'var(--paper)', border: 'var(--line)', color: 'var(--slate)' },
+  teal:    { background: '#EAF7F4', border: '#BFE6DE', color: '#14534A' },
+  amber:   { background: 'var(--warn-bg)', border: 'var(--warn-bd)', color: '#78350F' },
+}
+
+function DocPreview({ tone = 'neutral', children }) {
+  const c = previewTones[tone]
   return (
-    <div style={{ background: color, color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-      <div>
-        <div style={{ fontWeight: 700, fontSize: 16 }}>{title}</div>
-        {subtitle && <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{subtitle}</div>}
-      </div>
-      <button onClick={onClose} disabled={disabled} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer', lineHeight: 1 }}>✕</button>
+    <div style={{ margin: '0 22px 18px', background: c.background, border: `1px solid ${c.border}`, borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>
+      <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: c.color, lineHeight: 1.65 }}>
+        {children}
+      </pre>
     </div>
   )
 }
 
-function ModalFooter({ sending, onClose, onSend, sendLabel, color }) {
+function EmailModal({ title, subtitle, tone, note, emails, onEmailsChange, sending, sendResult, onClose, onSend, sendLabel }) {
   return (
-    <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-      <button onClick={onClose} disabled={sending} style={outlineBtnStyle}>Cancel</button>
-      <button
-        onClick={onSend}
-        disabled={sending}
-        style={{ background: sending ? '#9ca3af' : color, color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: sending ? 'default' : 'pointer' }}
-      >
-        {sending ? 'Sending…' : sendLabel}
+    <Modal
+      title={title}
+      subtitle={subtitle}
+      tone={tone}
+      note={note}
+      onClose={onClose}
+      closeDisabled={sending}
+      footer={<ModalActions sending={sending} onClose={onClose} onSend={onSend} sendLabel={sendLabel} />}
+    >
+      <div className="field">
+        <label className="field-label">Recipient Emails</label>
+        <textarea
+          value={emails}
+          onChange={e => onEmailsChange(e.target.value)}
+          placeholder="e.g. alice@example.com bob@example.com"
+          rows={3}
+          disabled={sending}
+          style={{ resize: 'vertical' }}
+        />
+        <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
+      </div>
+      {sendResult && <div style={{ marginTop: 14 }}><FeedbackBanner result={sendResult} /></div>}
+    </Modal>
+  )
+}
+
+function ModalActions({ sending, onClose, onSend, sendLabel }) {
+  return (
+    <>
+      <button onClick={onClose} disabled={sending} className="btn btn-ghost btn-sm">Cancel</button>
+      <button onClick={onSend} disabled={sending} className="btn btn-primary btn-sm">
+        {sending ? <><span className="spinner" /> Sending…</> : <><Icon name="send" size={15} /> {sendLabel}</>}
       </button>
-    </div>
+    </>
   )
 }
 
 function FeedbackBanner({ result }) {
   return (
-    <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: result.ok ? '#f0fdf4' : '#fef2f2', color: result.ok ? '#166534' : '#dc2626', border: `1px solid ${result.ok ? '#bbf7d0' : '#fecaca'}` }}>
-      {result.message}
+    <div className={`notice ${result.ok ? 'notice-success' : 'notice-danger'}`} style={{ fontWeight: 600 }}>
+      <Icon name={result.ok ? 'check' : 'close'} size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+      <span>{result.message}</span>
     </div>
   )
-}
-
-// ── Styles ──
-const thStyle = { padding: '8px 12px', textAlign: 'left', fontWeight: 600, color: '#374151', borderBottom: '2px solid #e5e7eb', fontSize: 12 }
-const tdStyle = { padding: '8px 12px', color: '#111827', fontSize: 13 }
-const regThStyle = { padding: '8px 12px', textAlign: 'left', fontWeight: 600, fontSize: 12, color: '#374151' }
-const regTdStyle = { padding: '8px 12px', color: '#111827', verticalAlign: 'top' }
-const outlineBtnStyle = { background: 'transparent', border: '1px solid #6b7280', color: '#374151', padding: '5px 14px', borderRadius: 6, fontSize: 13, cursor: 'pointer', fontWeight: 500 }
-const labelStyle = { display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }
-const textareaStyle = { width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }
-
-function actionBtn(color) {
-  return { background: color, color: '#fff', border: 'none', padding: '6px 14px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer' }
-}
-
-function solidBtn(color) {
-  return { background: color, color: '#fff', border: 'none', padding: '10px 20px', borderRadius: 8, fontWeight: 700, fontSize: 14, cursor: 'pointer' }
 }

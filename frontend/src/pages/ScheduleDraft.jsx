@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
+import Icon from '../components/Icon'
+import Modal from '../components/Modal'
 
 export default function ScheduleDraft() {
   const [schedule, setSchedule] = useState(null)
@@ -92,9 +94,10 @@ export default function ScheduleDraft() {
 
   if (!schedule) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', color: '#6b7280' }}>
-        <h2>No schedule found</h2>
-        <p>Return to the planner and click <strong>Generate Documents</strong> to create a schedule.</p>
+      <div className="empty-state" style={{ marginTop: 24 }}>
+        <div className="empty-icon"><Icon name="calendar" size={26} /></div>
+        <h3>No schedule found</h3>
+        <p style={{ margin: 0 }}>Return to the planner and click <strong>Generate Documents</strong> to create a schedule.</p>
       </div>
     )
   }
@@ -102,25 +105,26 @@ export default function ScheduleDraft() {
   const meta = brochure?.meta || {}
 
   return (
-    <div style={{ maxWidth: 800, margin: '0 auto', padding: '32px 24px', fontFamily: 'system-ui, sans-serif' }}>
+    <div style={{ maxWidth: 820, margin: '0 auto' }}>
 
       {/* Header */}
       <div style={{
-        background: '#166534',
+        background: 'linear-gradient(135deg, var(--forest) 0%, var(--pine) 100%)',
         color: '#fff',
-        borderRadius: 10,
-        padding: '20px 28px',
-        marginBottom: 24,
+        borderRadius: 'var(--r-md)',
+        padding: '24px 30px',
+        marginBottom: 22,
       }}>
-        <h1 style={{ margin: 0, fontSize: 22 }}>{meta.name || 'Tournament Schedule'}</h1>
-        <div style={{ marginTop: 6, opacity: 0.85, fontSize: 14 }}>
+        <div className="eyebrow" style={{ color: 'var(--champagne)', marginBottom: 6 }}>Schedule Draft</div>
+        <h1 style={{ margin: 0, fontSize: 26, color: '#fff' }}>{meta.name || 'Tournament Schedule'}</h1>
+        <div style={{ marginTop: 8, opacity: 0.9, fontSize: 14 }}>
           {meta.date && <span>{meta.date}</span>}
           {meta.numberOfDays > 1 && <span> ({meta.numberOfDays} days)</span>}
           {meta.venue && <span> &nbsp;·&nbsp; {meta.venue}</span>}
           {meta.format && <span> &nbsp;·&nbsp; {meta.format}</span>}
           {meta.eventType && <span> &nbsp;·&nbsp; {meta.eventType === 'team' ? `Teams of ${meta.teamSize}` : 'Individual'}</span>}
         </div>
-        <div style={{ marginTop: 4, opacity: 0.75, fontSize: 13 }}>
+        <div style={{ marginTop: 4, opacity: 0.78, fontSize: 13 }}>
           {meta.playerCount} players &nbsp;·&nbsp; First tee: {meta.teeTimeStart} &nbsp;·&nbsp; {meta.teeTimeInterval}-min intervals
           {meta.registrationDeadline && <span> &nbsp;·&nbsp; Reg. closes: {meta.registrationDeadline}</span>}
           {meta.entryFee > 0 && <span> &nbsp;·&nbsp; Entry: ${meta.entryFee}</span>}
@@ -128,112 +132,66 @@ export default function ScheduleDraft() {
       </div>
 
       {/* Draft banner */}
-      <div style={{
-        background: '#fef9c3',
-        border: '1px solid #fde047',
-        borderRadius: 8,
-        padding: '10px 16px',
-        fontSize: 13,
-        marginBottom: 20,
-        color: '#854d0e',
-      }}>
-        <strong>Draft</strong> — Return to the planner chat to make changes. This page auto-refreshes when you come back.
+      <div className="notice notice-warn" style={{ marginBottom: 20 }}>
+        <Icon name="clock" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+        <span><strong>Draft</strong> — Return to the planner chat to make changes. This page auto-refreshes when you come back.</span>
       </div>
 
       {/* Tee Time Table */}
-      <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', fontWeight: 700, fontSize: 15 }}>
-          Tee Time Schedule
+      <div className="card card-flush">
+        <div className="card-head">
+          <span className="card-title"><Icon name="calendar" size={18} style={{ color: 'var(--fairway)' }} /> Tee Time Schedule</span>
         </div>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
-          <thead>
-            <tr style={{ background: '#f9fafb' }}>
-              <th style={thStyle}>Group</th>
-              <th style={thStyle}>Tee Time</th>
-              <th style={thStyle}>Players</th>
-            </tr>
-          </thead>
-          <tbody>
-            {schedule.map((row) => (
-              <tr key={row.group} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                <td style={tdStyle}>Group {row.group}</td>
-                <td style={{ ...tdStyle, fontWeight: 600, color: '#166534' }}>{row.teeTime}</td>
-                <td style={tdStyle}>{row.players.join(', ')}</td>
+        <div className="table-wrap">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Group</th>
+                <th>Tee Time</th>
+                <th>Players</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {schedule.map((row) => (
+                <tr key={row.group}>
+                  <td>Group {row.group}</td>
+                  <td className="accent">{row.teeTime}</td>
+                  <td>{row.players.join(', ')}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {/* Save button */}
-      <div style={{ marginTop: 24, display: 'flex', alignItems: 'center', gap: 16 }}>
+      <div style={{ marginTop: 22, display: 'flex', alignItems: 'center', gap: 16 }}>
         {saved ? (
-          <div style={{
-            background: '#f0fdf4',
-            border: '1px solid #86efac',
-            borderRadius: 8,
-            padding: '10px 20px',
-            color: '#166534',
-            fontWeight: 600,
-            fontSize: 14,
-          }}>
-            Schedule saved! Return to the planner to continue editing, or visit the Reservations page.
+          <div className="notice notice-success" style={{ fontWeight: 600 }}>
+            <Icon name="check" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Schedule saved! Return to the planner to continue editing, or visit the Reservations page.</span>
           </div>
         ) : (
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{
-              background: saving ? '#93c5fd' : '#2563eb',
-              color: '#fff',
-              border: 'none',
-              padding: '10px 28px',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: 15,
-              cursor: saving ? 'default' : 'pointer',
-            }}
-          >
-            {saving ? 'Saving…' : 'Save Schedule'}
+          <button onClick={handleSave} disabled={saving} className="btn btn-gold">
+            {saving ? <><span className="spinner" /> Saving…</> : <><Icon name="check" size={16} /> Save Schedule</>}
           </button>
         )}
       </div>
 
       {/* Rule Sheet card */}
       {ruleSheet && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 24 }}>
-          <div style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid #e5e7eb',
-            fontWeight: 700,
-            fontSize: 15,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span>&#128220; Player Information Guide</span>
-            <button
-              onClick={() => { setRuleSheetModal(true); setRuleSheetEmails(''); setRuleSheetResult(null) }}
-              style={{
-                background: '#0891b2', color: '#fff', border: 'none',
-                padding: '7px 16px', borderRadius: 6, fontSize: 13,
-                fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Send to Players
+        <div className="card card-flush" style={{ marginTop: 22 }}>
+          <div className="card-head">
+            <span className="card-title"><Icon name="doc" size={18} style={{ color: 'var(--fairway)' }} /> Player Information Guide</span>
+            <button onClick={() => { setRuleSheetModal(true); setRuleSheetEmails(''); setRuleSheetResult(null) }} className="btn btn-sm" style={{ background: 'var(--info)' }}>
+              <Icon name="send" size={15} /> Send to Players
             </button>
           </div>
-          <div style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}>
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
             <strong>Subject:</strong> {ruleSheet.subject}
           </div>
-          <div style={{
-            margin: '0 20px 16px',
-            background: '#f0fdfa',
-            border: '1px solid #99f6e4',
-            borderRadius: 6,
-            padding: '12px 16px',
-          }}>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#134e4a', lineHeight: 1.6 }}>
+          <div style={{ margin: '0 22px 18px', background: '#EAF7F4', border: '1px solid #BFE6DE', borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>
+            <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#14534A', lineHeight: 1.65 }}>
               {ruleSheet.body?.slice(0, 600)}{ruleSheet.body?.length > 600 ? '\n…' : ''}
             </pre>
           </div>
@@ -242,39 +200,18 @@ export default function ScheduleDraft() {
 
       {/* F&B Summary card */}
       {fnbSummary && (
-        <div className="card" style={{ padding: 0, overflow: 'hidden', marginTop: 24 }}>
-          <div style={{
-            padding: '14px 20px',
-            borderBottom: '1px solid #e5e7eb',
-            fontWeight: 700,
-            fontSize: 15,
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}>
-            <span>&#127869; Food &amp; Beverage Summary</span>
-            <button
-              onClick={() => { setFnbModal(true); setFnbEmails(''); setFnbResult(null) }}
-              style={{
-                background: '#d97706', color: '#fff', border: 'none',
-                padding: '7px 16px', borderRadius: 6, fontSize: 13,
-                fontWeight: 600, cursor: 'pointer',
-              }}
-            >
-              Send to Caterer
+        <div className="card card-flush" style={{ marginTop: 22 }}>
+          <div className="card-head">
+            <span className="card-title"><Icon name="food" size={18} style={{ color: 'var(--fairway)' }} /> Food &amp; Beverage Summary</span>
+            <button onClick={() => { setFnbModal(true); setFnbEmails(''); setFnbResult(null) }} className="btn btn-sm" style={{ background: 'var(--warn)' }}>
+              <Icon name="send" size={15} /> Send to Caterer
             </button>
           </div>
-          <div style={{ padding: '14px 20px', fontSize: 13, color: '#374151' }}>
+          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
             <strong>Subject:</strong> {fnbSummary.subject}
           </div>
-          <div style={{
-            margin: '0 20px 16px',
-            background: '#fffbeb',
-            border: '1px solid #fde68a',
-            borderRadius: 6,
-            padding: '12px 16px',
-          }}>
-            <pre style={{ fontFamily: 'monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#78350f', lineHeight: 1.6 }}>
+          <div style={{ margin: '0 22px 18px', background: 'var(--warn-bg)', border: '1px solid var(--warn-bd)', borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>
+            <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: '#78350F', lineHeight: 1.65 }}>
               {fnbSummary.body?.slice(0, 600)}{fnbSummary.body?.length > 600 ? '\n…' : ''}
             </pre>
           </div>
@@ -283,42 +220,19 @@ export default function ScheduleDraft() {
 
       {/* Rule Sheet Email Modal */}
       {ruleSheetModal && (
-        <div
-          onClick={() => { if (!ruleSheetSending) setRuleSheetModal(false) }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-            <div style={{ background: '#0891b2', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>Send Player Information Guide</div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{meta.name || 'Tournament'}</div>
-              </div>
-              <button onClick={() => setRuleSheetModal(false)} disabled={ruleSheetSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>✕</button>
-            </div>
-            <div style={{ background: '#ecfeff', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
-              Emails the full Player Information Guide to participants — event details, format, conduct rules, and catering info.
-            </div>
-            <div style={{ padding: '20px 24px' }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
-              <textarea
-                value={ruleSheetEmails}
-                onChange={(e) => setRuleSheetEmails(e.target.value)}
-                placeholder="e.g. player1@example.com player2@example.com"
-                rows={3}
-                disabled={ruleSheetSending}
-                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
-              />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
-              {ruleSheetResult && (
-                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: ruleSheetResult.ok ? '#f0fdf4' : '#fef2f2', color: ruleSheetResult.ok ? '#166534' : '#dc2626', border: `1px solid ${ruleSheetResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
-                  {ruleSheetResult.message}
-                </div>
-              )}
-            </div>
-            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setRuleSheetModal(false)} disabled={ruleSheetSending} style={draftBtnStyle}>Cancel</button>
+        <Modal
+          title="Send Player Information Guide"
+          subtitle={meta.name || 'Tournament'}
+          tone="info"
+          note="Emails the full Player Information Guide to participants — event details, format, conduct rules, and catering info."
+          onClose={() => { if (!ruleSheetSending) setRuleSheetModal(false) }}
+          closeDisabled={ruleSheetSending}
+          footer={
+            <>
+              <button onClick={() => setRuleSheetModal(false)} disabled={ruleSheetSending} className="btn btn-ghost btn-sm">Cancel</button>
               <button
                 disabled={ruleSheetSending}
+                className="btn btn-primary btn-sm"
                 onClick={async () => {
                   const emails = ruleSheetEmails.split(/[\s,;]+/).map(e => e.trim()).filter(Boolean)
                   if (!emails.length) { setRuleSheetResult({ ok: false, message: 'Please enter at least one email address.' }); return }
@@ -331,53 +245,47 @@ export default function ScheduleDraft() {
                   } catch { setRuleSheetResult({ ok: false, message: 'Could not reach the server.' }) }
                   finally { setRuleSheetSending(false) }
                 }}
-                style={{ background: ruleSheetSending ? '#67e8f9' : '#0891b2', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: ruleSheetSending ? 'default' : 'pointer' }}
               >
-                {ruleSheetSending ? 'Sending…' : 'Send Guide'}
+                {ruleSheetSending ? <><span className="spinner" /> Sending…</> : <><Icon name="send" size={15} /> Send Guide</>}
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="field">
+            <label className="field-label">Recipient Emails</label>
+            <textarea
+              value={ruleSheetEmails}
+              onChange={(e) => setRuleSheetEmails(e.target.value)}
+              placeholder="e.g. player1@example.com player2@example.com"
+              rows={3}
+              disabled={ruleSheetSending}
+              style={{ resize: 'vertical' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
           </div>
-        </div>
+          {ruleSheetResult && (
+            <div className={`notice ${ruleSheetResult.ok ? 'notice-success' : 'notice-danger'}`} style={{ marginTop: 14, fontWeight: 600 }}>
+              {ruleSheetResult.message}
+            </div>
+          )}
+        </Modal>
       )}
 
       {/* F&B Email Modal */}
       {fnbModal && (
-        <div
-          onClick={() => { if (!fnbSending) setFnbModal(false) }}
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, width: '100%', maxWidth: 500, boxShadow: '0 20px 60px rgba(0,0,0,0.25)', overflow: 'hidden' }}>
-            <div style={{ background: '#d97706', color: '#fff', padding: '16px 20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 16 }}>Send F&amp;B Summary</div>
-                <div style={{ fontSize: 12, opacity: 0.8, marginTop: 2 }}>{meta.name || 'Tournament'}</div>
-              </div>
-              <button onClick={() => setFnbModal(false)} disabled={fnbSending} style={{ background: 'none', border: 'none', color: '#fff', fontSize: 20, cursor: 'pointer' }}>✕</button>
-            </div>
-            <div style={{ background: '#fffbeb', borderBottom: '1px solid #e5e7eb', padding: '10px 20px', fontSize: 12, color: '#374151' }}>
-              Emails the Food &amp; Beverage Summary / Banquet Order Sheet to your caterer or venue contact.
-            </div>
-            <div style={{ padding: '20px 24px' }}>
-              <label style={{ display: 'block', fontWeight: 600, fontSize: 14, marginBottom: 6 }}>Recipient Emails</label>
-              <textarea
-                value={fnbEmails}
-                onChange={(e) => setFnbEmails(e.target.value)}
-                placeholder="e.g. catering@venue.com"
-                rows={3}
-                disabled={fnbSending}
-                style={{ width: '100%', boxSizing: 'border-box', border: '1px solid #d1d5db', borderRadius: 8, padding: '10px 12px', fontSize: 13, fontFamily: 'inherit', resize: 'vertical', outline: 'none', color: '#111827' }}
-              />
-              <div style={{ fontSize: 11, color: '#9ca3af', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
-              {fnbResult && (
-                <div style={{ marginTop: 12, padding: '10px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600, background: fnbResult.ok ? '#f0fdf4' : '#fef2f2', color: fnbResult.ok ? '#166534' : '#dc2626', border: `1px solid ${fnbResult.ok ? '#bbf7d0' : '#fecaca'}` }}>
-                  {fnbResult.message}
-                </div>
-              )}
-            </div>
-            <div style={{ padding: '12px 24px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-              <button onClick={() => setFnbModal(false)} disabled={fnbSending} style={draftBtnStyle}>Cancel</button>
+        <Modal
+          title="Send F&B Summary"
+          subtitle={meta.name || 'Tournament'}
+          tone="gold"
+          note="Emails the Food & Beverage Summary / Banquet Order Sheet to your caterer or venue contact."
+          onClose={() => { if (!fnbSending) setFnbModal(false) }}
+          closeDisabled={fnbSending}
+          footer={
+            <>
+              <button onClick={() => setFnbModal(false)} disabled={fnbSending} className="btn btn-ghost btn-sm">Cancel</button>
               <button
                 disabled={fnbSending}
+                className="btn btn-primary btn-sm"
                 onClick={async () => {
                   const emails = fnbEmails.split(/[\s,;]+/).map(e => e.trim()).filter(Boolean)
                   if (!emails.length) { setFnbResult({ ok: false, message: 'Please enter at least one email address.' }); return }
@@ -390,39 +298,31 @@ export default function ScheduleDraft() {
                   } catch { setFnbResult({ ok: false, message: 'Could not reach the server.' }) }
                   finally { setFnbSending(false) }
                 }}
-                style={{ background: fnbSending ? '#fcd34d' : '#d97706', color: '#fff', border: 'none', padding: '7px 20px', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: fnbSending ? 'default' : 'pointer' }}
               >
-                {fnbSending ? 'Sending…' : 'Send Summary'}
+                {fnbSending ? <><span className="spinner" /> Sending…</> : <><Icon name="send" size={15} /> Send Summary</>}
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="field">
+            <label className="field-label">Recipient Emails</label>
+            <textarea
+              value={fnbEmails}
+              onChange={(e) => setFnbEmails(e.target.value)}
+              placeholder="e.g. catering@venue.com"
+              rows={3}
+              disabled={fnbSending}
+              style={{ resize: 'vertical' }}
+            />
+            <div style={{ fontSize: 11, color: 'var(--faint)', marginTop: 4 }}>Separate multiple addresses with spaces, commas, or newlines.</div>
           </div>
-        </div>
+          {fnbResult && (
+            <div className={`notice ${fnbResult.ok ? 'notice-success' : 'notice-danger'}`} style={{ marginTop: 14, fontWeight: 600 }}>
+              {fnbResult.message}
+            </div>
+          )}
+        </Modal>
       )}
     </div>
   )
-}
-
-const thStyle = {
-  padding: '10px 16px',
-  textAlign: 'left',
-  fontWeight: 600,
-  color: '#374151',
-  borderBottom: '2px solid #e5e7eb',
-  fontSize: 13,
-}
-
-const tdStyle = {
-  padding: '10px 16px',
-  color: '#111827',
-}
-
-const draftBtnStyle = {
-  background: 'transparent',
-  border: '1px solid #6b7280',
-  color: '#374151',
-  padding: '6px 16px',
-  borderRadius: 6,
-  fontSize: 13,
-  cursor: 'pointer',
-  fontWeight: 500,
 }

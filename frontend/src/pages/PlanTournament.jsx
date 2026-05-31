@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { tournamentState as initial } from '../data/tournament'
+import Icon from '../components/Icon'
+import Modal from '../components/Modal'
 
 const STATUS_ROWS = [
   { key: 'name',                 label: 'Tournament Name',    required: true,                        fmt: v => v },
@@ -163,98 +165,30 @@ function SourceViewerModal({ source, resolvedContent, loading, error, onClose })
   const modalContent = (resolvedContent || getSourceContent(source)).trim()
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(15, 23, 42, 0.48)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-        zIndex: 50,
-      }}
+    <Modal
+      title={source.title}
+      subtitle={`Chunk: ${source.chunk_id || 'n/a'}${typeof source.score === 'number' ? ` · Similarity ${source.score.toFixed(3)}` : ''}`}
+      onClose={onClose}
+      maxWidth={860}
+      footer={
+        <>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSourceInNewTab({ ...source, content: modalContent })}>
+            <Icon name="external" size={15} /> Open in New Tab
+          </button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Close</button>
+        </>
+      }
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 'min(860px, 100%)',
-          maxHeight: '85vh',
-          background: '#ffffff',
-          borderRadius: 16,
-          border: '1px solid #cbd5e1',
-          boxShadow: '0 24px 80px rgba(15, 23, 42, 0.24)',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
-        <div style={{ padding: '18px 20px 12px', borderBottom: '1px solid #e2e8f0' }}>
-          <div style={{ fontSize: 20, fontWeight: 700, color: '#0f172a' }}>{source.title}</div>
-          <div style={{ marginTop: 8, fontSize: 13, color: '#64748b', lineHeight: 1.5 }}>
-            <span>Chunk: {source.chunk_id || 'n/a'}</span>
-            {typeof source.score === 'number' && <span> | Similarity: {source.score.toFixed(3)}</span>}
-          </div>
-        </div>
-
-        <div
-          style={{
-            padding: 20,
-            overflowY: 'auto',
-            whiteSpace: 'pre-wrap',
-            lineHeight: 1.6,
-            fontSize: 15,
-            color: '#1e293b',
-            background: '#f8fafc',
-          }}
-        >
-          {loading ? 'Loading full chunk…' : error ? error : modalContent}
-        </div>
-
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            gap: 12,
-            padding: 16,
-            borderTop: '1px solid #e2e8f0',
-            background: '#ffffff',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => openSourceInNewTab({ ...source, content: modalContent })}
-            style={{
-              border: '1px solid #cbd5e1',
-              background: '#f8fafc',
-              color: '#334155',
-              borderRadius: 8,
-              padding: '10px 14px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            Open In New Tab
-          </button>
-          <button
-            type="button"
-            onClick={onClose}
-            style={{
-              border: 'none',
-              background: '#0f172a',
-              color: '#ffffff',
-              borderRadius: 8,
-              padding: '10px 16px',
-              cursor: 'pointer',
-              fontWeight: 600,
-            }}
-          >
-            Close
-          </button>
-        </div>
+      <div style={{
+        whiteSpace: 'pre-wrap',
+        lineHeight: 1.7,
+        fontSize: 15,
+        color: 'var(--slate)',
+        fontFamily: 'var(--font-serif)',
+      }}>
+        {loading ? 'Loading full chunk…' : error ? error : modalContent}
       </div>
-    </div>
+    </Modal>
   )
 }
 
@@ -263,86 +197,69 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
   const totalRequired = STATUS_ROWS.filter(r => isRequired(r, tournament)).length
   const ragIndicator = getRagIndicator(ragStatus)
 
+  const pct = totalRequired > 0 ? Math.round((requiredFilled / totalRequired) * 100) : 0
+
   return (
-    <div style={{
-      width: 300,
-      flexShrink: 0,
-      background: '#f0fdf4',
-      border: '1px solid #86efac',
-      borderRadius: 10,
-      padding: '16px 18px',
-      alignSelf: 'flex-start',
-      position: 'sticky',
-      top: 24,
-    }}>
-      <div style={{ fontWeight: 700, color: '#166534', fontSize: 15, marginBottom: 4 }}>
-        Tournament Details
-      </div>
-      <div style={{ fontSize: 12, color: '#6b7280', marginBottom: 12 }}>
-        {requiredFilled} / {totalRequired} required fields collected
-      </div>
-
-      <div style={{
-        marginBottom: 12,
-        padding: '10px 12px',
-        borderRadius: 8,
-        background: ragIndicator.background,
-        border: `1px solid ${ragIndicator.border}`,
-      }}>
-        <div style={{ fontSize: 12, fontWeight: 700, color: ragIndicator.color }}>
-          {ragIndicator.label}
+    <div className="plan-panel card" style={{ width: 320, flexShrink: 0, alignSelf: 'flex-start', position: 'sticky', top: 24, padding: 0, overflow: 'hidden' }}>
+      <div style={{ padding: '16px 18px 14px', borderBottom: '1px solid var(--line-soft)' }}>
+        <div className="card-title" style={{ fontSize: 17 }}>
+          <Icon name="flag" size={18} style={{ color: 'var(--fairway)' }} /> Tournament Details
         </div>
-        <div style={{ fontSize: 12, color: '#4b5563', marginTop: 4, lineHeight: 1.35 }}>
-          {ragIndicator.detail}
+        <div style={{ fontSize: 12, color: 'var(--muted)', margin: '8px 0 8px' }}>
+          {requiredFilled} / {totalRequired} required fields collected
+        </div>
+        <div style={{ height: 7, borderRadius: 999, background: 'var(--line-soft)', overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${pct}%`, borderRadius: 999, background: 'linear-gradient(90deg, var(--fairway), var(--champagne))', transition: 'width 0.4s var(--ease)' }} />
         </div>
       </div>
 
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-        <tbody>
-          {STATUS_ROWS.map(row => {
-            const filled = isFilled(row.key, tournament)
-            const display = filled ? row.fmt(tournament[row.key]) : null
-            return (
-              <tr key={row.key} style={{ borderBottom: '1px solid #d1fae5' }}>
-                <td style={{ padding: '5px 4px', color: '#6b7280', width: '50%', fontWeight: 600, verticalAlign: 'top' }}>
-                  {row.label}{isRequired(row, tournament) && !filled ? ' *' : ''}
-                </td>
-                <td style={{ padding: '5px 4px', color: display ? '#111827' : '#9ca3af', fontStyle: display ? 'normal' : 'italic' }}>
-                  {display || '—'}
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <div style={{ padding: '14px 18px' }}>
+        <div style={{
+          marginBottom: 14,
+          padding: '10px 12px',
+          borderRadius: 'var(--r-sm)',
+          background: ragIndicator.background,
+          border: `1px solid ${ragIndicator.border}`,
+        }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: ragIndicator.color }}>
+            {ragIndicator.label}
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 4, lineHeight: 1.4 }}>
+            {ragIndicator.detail}
+          </div>
+        </div>
 
-      {readyForGeneration && (
-        <div style={{ marginTop: 14 }}>
-          <button
-            onClick={onGenerate}
-            disabled={generating}
-            style={{
-              background: '#16a34a',
-              color: '#fff',
-              border: 'none',
-              padding: '10px 20px',
-              borderRadius: 8,
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: generating ? 'not-allowed' : 'pointer',
-              width: '100%',
-            }}
-          >
-            {generating ? 'Saving…' : generationDone ? 'Update Tournament' : 'Save Tournament'}
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <tbody>
+            {STATUS_ROWS.map(row => {
+              const filled = isFilled(row.key, tournament)
+              const display = filled ? row.fmt(tournament[row.key]) : null
+              return (
+                <tr key={row.key} style={{ borderBottom: '1px solid var(--line-soft)' }}>
+                  <td style={{ padding: '6px 4px', color: 'var(--muted)', width: '48%', fontWeight: 600, verticalAlign: 'top' }}>
+                    {row.label}{isRequired(row, tournament) && !filled ? ' *' : ''}
+                  </td>
+                  <td style={{ padding: '6px 4px', color: display ? 'var(--ink)' : 'var(--faint)', fontStyle: display ? 'normal' : 'italic' }}>
+                    {display || '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+
+        {readyForGeneration ? (
+          <button onClick={onGenerate} disabled={generating} className="btn btn-gold btn-block" style={{ marginTop: 16 }}>
+            {generating ? <><span className="spinner" /> Saving…</> : (
+              <><Icon name={generationDone ? 'check' : 'trophy'} size={16} /> {generationDone ? 'Update Tournament' : 'Save Tournament'}</>
+            )}
           </button>
-        </div>
-      )}
-
-      {!readyForGeneration && (
-        <div style={{ marginTop: 12, fontSize: 12, color: '#6b7280' }}>
-          * Required field
-        </div>
-      )}
+        ) : (
+          <div style={{ marginTop: 12, fontSize: 12, color: 'var(--muted)' }}>
+            <span style={{ color: 'var(--champagne-dark)', fontWeight: 700 }}>*</span> Required field
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -665,135 +582,93 @@ export default function PlanTournament() {
 
   return (
     <div>
-      <h1 style={{ margin: 0 }}>Plan Tournament</h1>
-      <div className="muted small">Chat-driven tournament planner</div>
-      <div style={{ height: 16 }} />
+      <div className="page-head">
+        <div className="eyebrow">AI Assistant</div>
+        <h1 className="page-title">Plan Tournament</h1>
+        <div className="page-sub">Chat with the planner to build your event, then save it to Reservations</div>
+      </div>
 
-      <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      <div className="plan-layout" style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
         {/* Chat column */}
-        <div className="card" style={{ flex: 1, minWidth: 0 }}>
-          <h2 style={{ marginTop: 0 }}>Chat</h2>
-
-          {/* Message thread */}
-          <div
-            ref={messagesContainerRef}
-            style={{
-              border: '1px solid #ddd',
-              borderRadius: 8,
-              padding: 12,
-              minHeight: 400,
-              maxHeight: 520,
-              overflowY: 'auto',
-              background: '#fafafa',
-            }}
-          >
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                style={{
-                  display: 'flex',
-                  justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                  marginBottom: 10,
-                }}
-              >
-                <div
-                  style={{
-                    background: msg.role === 'user' ? '#dbeafe' : '#e5e7eb',
-                    padding: 10,
-                    borderRadius: 10,
-                    maxWidth: '78%',
-                    whiteSpace: 'pre-wrap',
-                    fontSize: 14,
-                  }}
-                >
-                  <strong style={{ fontSize: 12, opacity: 0.7 }}>
-                    {msg.role === 'user' ? 'You' : 'Assistant'}
-                  </strong>
-                  <div style={{ marginTop: 3 }}>{msg.content}</div>
-                  {msg.sources?.length > 0 && (
-                    <div
-                      className="small muted"
-                      style={{
-                        marginTop: 8,
-                        display: 'flex',
-                        flexWrap: 'wrap',
-                        gap: 6,
-                      }}
-                    >
-                      <span>Sources:</span>
-                      {msg.sources.map((source, sourceIndex) => (
-                        <button
-                          key={`${source.chunk_id}-${sourceIndex}`}
-                          type="button"
-                          onClick={() => setActiveSource(source)}
-                          style={{
-                            padding: '3px 8px',
-                            borderRadius: 999,
-                            background: '#f3f4f6',
-                            border: '1px solid #d1d5db',
-                            cursor: 'pointer',
-                            color: '#475569',
-                            fontSize: 12,
-                            lineHeight: 1.4,
-                          }}
-                        >
-                          {formatSourceLabel(source)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-
-            {loading && (
-              <div className="small muted" style={{ padding: 8 }}>Thinking…</div>
-            )}
+        <div className="card card-flush" style={{ flex: 1, minWidth: 0 }}>
+          <div className="card-head">
+            <div className="card-title">
+              <Icon name="sparkle" size={18} style={{ color: 'var(--champagne-dark)' }} /> Planning Assistant
+            </div>
+            {phase === 'refinement' && <span className="badge badge-gold">Refinement mode</span>}
           </div>
 
-          {/* Phase badge */}
-          {phase === 'refinement' && (
-            <div style={{
-              marginTop: 8,
-              fontSize: 12,
-              color: '#6366f1',
-              fontWeight: 600,
-            }}>
-              Refinement mode — keep chatting to adjust the schedule or tournament details.
+          <div style={{ padding: 18 }}>
+            {/* Message thread */}
+            <div ref={messagesContainerRef} className="chat-thread">
+              {messages.map((msg, i) => (
+                <div key={i} className={`msg-row ${msg.role}`}>
+                  <div className={`msg-avatar ${msg.role}`}>
+                    {msg.role === 'user' ? 'You'.charAt(0) : <Icon name="flag" size={15} />}
+                  </div>
+                  <div className={`bubble ${msg.role}`}>
+                    <div className="bubble-meta">{msg.role === 'user' ? 'You' : 'Assistant'}</div>
+                    <div>{msg.content}</div>
+                    {msg.sources?.length > 0 && (
+                      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.7 }}>Sources:</span>
+                        {msg.sources.map((source, sourceIndex) => (
+                          <button
+                            key={`${source.chunk_id}-${sourceIndex}`}
+                            type="button"
+                            className="source-chip"
+                            onClick={() => setActiveSource(source)}
+                          >
+                            {formatSourceLabel(source)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+
+              {loading && (
+                <div className="msg-row assistant">
+                  <div className="msg-avatar assistant"><Icon name="flag" size={15} /></div>
+                  <div className="bubble assistant">
+                    <span className="typing"><span /><span /><span /></span>
+                  </div>
+                </div>
+              )}
             </div>
-          )}
 
-          {/* Input form */}
-          <form onSubmit={sendMessage} style={{ marginTop: 12 }}>
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={
-                phase === 'refinement'
-                  ? 'Request changes (e.g. "Move start time to 9 AM")…'
-                  : 'Describe your tournament…'
-              }
-              rows={3}
-              style={{
-                width: '100%',
-                padding: 10,
-                borderRadius: 8,
-                border: '1px solid #ccc',
-                boxSizing: 'border-box',
-                resize: 'vertical',
-                fontSize: 14,
-              }}
-            />
+            {phase === 'refinement' && (
+              <div className="notice notice-info" style={{ marginTop: 12 }}>
+                <Icon name="sparkle" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                <span>Refinement mode — keep chatting to adjust the schedule or tournament details.</span>
+              </div>
+            )}
 
-            {error && <div style={{ color: 'red', fontSize: 13, marginTop: 4 }}>{error}</div>}
+            {/* Input form */}
+            <form onSubmit={sendMessage} style={{ marginTop: 14 }}>
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={
+                  phase === 'refinement'
+                    ? 'Request changes (e.g. "Move start time to 9 AM")…'
+                    : 'Describe your tournament…'
+                }
+                rows={3}
+                style={{ resize: 'vertical' }}
+              />
 
-            <div style={{ textAlign: 'right', marginTop: 8 }}>
-              <button className="button" disabled={loading}>
-                Send
-              </button>
-            </div>
-          </form>
+              {error && <div className="notice notice-danger" style={{ marginTop: 8 }}>{error}</div>}
+
+              <div style={{ textAlign: 'right', marginTop: 10 }}>
+                <button className="btn btn-primary" disabled={loading}>
+                  <Icon name="send" size={15} /> Send
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
 
         {/* Live status panel */}

@@ -3,13 +3,12 @@ uvicorn
 python-dotenv
 certifi
 pydantic
-openai
+anthropic
 langchain
-langchain-openai
+langchain-anthropic
 sentence-transformers
 motor
 pymongo[srv]
-sendgrid
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt

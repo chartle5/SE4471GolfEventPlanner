@@ -1,5 +1,5 @@
-import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import React, { useState } from 'react'
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Sidebar from './components/Sidebar'
 import Topbar from './components/Topbar'
 import Dashboard from './pages/Dashboard'
@@ -15,12 +15,19 @@ import { useAuth } from './context/AuthContext'
 
 function ProtectedLayout() {
   const { isLoggedIn } = useAuth()
+  const [navOpen, setNavOpen] = useState(false)
+  const location = useLocation()
+
+  // Close the mobile drawer whenever the route changes.
+  React.useEffect(() => { setNavOpen(false) }, [location.pathname])
+
   if (!isLoggedIn) return <Navigate to="/login" replace />
   return (
     <div className="app">
-      <Sidebar />
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+      <div className={`scrim ${navOpen ? 'show' : ''}`} onClick={() => setNavOpen(false)} />
       <div className="content">
-        <Topbar />
+        <Topbar onMenu={() => setNavOpen(true)} />
         <div className="page">
           <Routes>
             <Route path="/" element={<Dashboard />} />

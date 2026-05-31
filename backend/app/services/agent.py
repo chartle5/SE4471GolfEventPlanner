@@ -52,7 +52,8 @@ DOCUMENT_IMPACT_FIELDS = {
     "cateringServingTime",
     "cateringDietaryNotes",
 }
-LANGCHAIN_STRUCTURED_METHOD = os.getenv("LANGCHAIN_STRUCTURED_METHOD", "json_schema")
+# Anthropic structured output is tool-calling based (not OpenAI's "json_schema").
+LANGCHAIN_STRUCTURED_METHOD = os.getenv("LANGCHAIN_STRUCTURED_METHOD", "function_calling")
 logger = logging.getLogger("uvicorn.error")
 
 

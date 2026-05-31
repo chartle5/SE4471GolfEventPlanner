@@ -65,7 +65,7 @@ cd SE4471GolfEventPlanner
    pip install -r requirements.txt
    ```
 
-5. Create a `.env` file in the `backend` directory with your Azure OpenAI credentials:
+5. Create a `.env` file in the `backend` directory with your credentials:
    ```env
    AZURE_OPENAI_API_KEY=your_api_key_here
    AZURE_OPENAI_API_VERSION=2023-12-01-preview
@@ -76,7 +76,25 @@ cd SE4471GolfEventPlanner
    MONGODB_STARTUP_REQUIRED=false
    RAG_LOCAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
    LOG_LLM_PROMPTS=false
+
+   # JWT (authentication)
+   JWT_SECRET=replace_with_a_long_random_string
+   JWT_ALGORITHM=HS256
+   JWT_EXPIRE_MINUTES=10080
+
+   # SMTP email (replaces SendGrid)
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USERNAME=your_gmail_address@gmail.com
+   SMTP_PASSWORD=your_16_char_app_password
+   SMTP_FROM_EMAIL=your_gmail_address@gmail.com
+   SMTP_FROM_NAME=Golf Event Planner
    ```
+
+   **SMTP / Gmail setup:** enable 2-Step Verification on your Google account, then go to
+   **myaccount.google.com → Security → App Passwords** and generate a 16-character app
+   password. Use that value for `SMTP_PASSWORD`. Any other SMTP provider (Outlook, etc.)
+   works by changing `SMTP_HOST` and `SMTP_PORT`.
 
    Replace the placeholder values with your actual Azure OpenAI resource details.
    `MCP_WEATHER_SERVER_URL` is optional and defaults to `http://127.0.0.1:8001/mcp`.
@@ -298,6 +316,50 @@ The script will:
 - **Azure OpenAI errors**: Verify your `.env` file has correct Azure OpenAI credentials
 - **Port already in use**: The backend runs on port 8000 by default. If it's occupied, you can specify a different port: `uvicorn app.main:app --reload --port 8001`
 - **MCP server port already in use**: Start the MCP server on another port, for example `uvicorn mcp_weather_server:app --reload --port 8002`
+- **Email not sending**: Confirm `SMTP_HOST`, `SMTP_USERNAME`, and `SMTP_PASSWORD` are set in `backend/.env`. For Gmail, use an App Password (not your normal account password).
+
+### JWT Token Verification
+
+Use these commands from the `backend/` directory to inspect and test your JWT configuration without starting the server:
+
+**Decode a token (no signature check — inspect payload only):**
+```bash
+python3 -c "
+import sys, base64, json
+token = sys.argv[1]
+part = token.split('.')[1]
+part += '=' * (-len(part) % 4)
+print(json.dumps(json.loads(base64.urlsafe_b64decode(part)), indent=2))
+" YOUR_TOKEN_HERE
+```
+
+**Verify a token against your current JWT_SECRET (checks signature + expiry):**
+```bash
+python3 -c "
+import os; from dotenv import load_dotenv; load_dotenv()
+from jose import jwt, JWTError
+token = input('Paste token: ')
+try:
+    payload = jwt.decode(token, os.getenv('JWT_SECRET','change_me'), algorithms=[os.getenv('JWT_ALGORITHM','HS256')])
+    print('VALID:', payload)
+except JWTError as e:
+    print('INVALID:', e)
+"
+```
+
+**Generate a fresh test token:**
+```bash
+python3 -c "
+import os; from dotenv import load_dotenv; load_dotenv()
+from app.services.auth_service import create_access_token
+token = create_access_token('test-user-id', 'testuser')
+print(token)
+"
+```
+
+> **Key lifetime:** tokens currently expire after `JWT_EXPIRE_MINUTES` (default 10 080 min = 7 days).
+> If a token is expired, simply log in again through the UI to receive a fresh one.
+> To invalidate **all** existing tokens at once, change `JWT_SECRET` in `backend/.env` and restart the backend.
 
 ### Frontend Issues
 
