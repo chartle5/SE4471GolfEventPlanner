@@ -1,6 +1,7 @@
 import React, { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import Icon from '../components/Icon'
 
 export default function Login() {
   const { login } = useAuth()
@@ -35,18 +36,20 @@ export default function Login() {
   }
 
   return (
-    <div style={pageStyle}>
-      <div style={cardStyle}>
-        {/* Header */}
-        <div style={headerStyle}>
-          <div style={{ fontSize: 28, marginBottom: 4 }}>⛳</div>
-          <div style={{ fontWeight: 700, fontSize: 20, color: '#0b1b2b' }}>Golf Event Planner</div>
-          <div style={{ fontSize: 13, color: '#64748b', marginTop: 4 }}>Sign in to your account</div>
+    <div className="auth-shell">
+      <div className="auth-card">
+        <div className="auth-brand">
+          <div className="auth-mark">
+            <Icon name="flag" size={26} strokeWidth={1.9} />
+          </div>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>Organizer Suite</div>
+          <div className="auth-title">Golf Event Planner</div>
+          <div className="auth-sub">Sign in to your account</div>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <div>
-            <label style={labelStyle}>Username or Email</label>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="field">
+            <label className="field-label">Username or Email</label>
             <input
               type="text"
               value={identifier}
@@ -54,102 +57,31 @@ export default function Login() {
               placeholder="username or email@example.com"
               required
               autoFocus
-              style={inputStyle}
             />
           </div>
 
-          <div>
-            <label style={labelStyle}>Password</label>
+          <div className="field">
+            <label className="field-label">Password</label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              style={inputStyle}
             />
           </div>
 
-          {error && <div style={errorStyle}>{error}</div>}
+          {error && <div className="notice notice-danger">{error}</div>}
 
-          <button type="submit" disabled={loading} style={btnStyle(loading)}>
-            {loading ? 'Signing in…' : 'Sign In'}
+          <button type="submit" disabled={loading} className="btn btn-gold btn-block" style={{ marginTop: 2 }}>
+            {loading ? <><span className="spinner" /> Signing in…</> : 'Sign In'}
           </button>
         </form>
 
-        <div style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: '#64748b' }}>
-          Don't have an account?{' '}
-          <Link to="/register" style={{ color: '#166534', fontWeight: 600, textDecoration: 'none' }}>
-            Create one
-          </Link>
+        <div className="auth-foot">
+          Don't have an account? <Link to="/register">Create one</Link>
         </div>
       </div>
     </div>
   )
 }
-
-const pageStyle = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 50%, #f0fdf4 100%)',
-  padding: 20,
-}
-
-const cardStyle = {
-  background: '#fff',
-  borderRadius: 16,
-  padding: '36px 40px',
-  width: '100%',
-  maxWidth: 400,
-  boxShadow: '0 10px 40px rgba(0,0,0,0.10)',
-  border: '1px solid #e5e7eb',
-}
-
-const headerStyle = {
-  textAlign: 'center',
-  marginBottom: 28,
-}
-
-const labelStyle = {
-  display: 'block',
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#374151',
-  marginBottom: 5,
-}
-
-const inputStyle = {
-  width: '100%',
-  padding: '10px 12px',
-  borderRadius: 8,
-  border: '1px solid #d1d5db',
-  fontSize: 14,
-  boxSizing: 'border-box',
-  outline: 'none',
-  color: '#111827',
-}
-
-const errorStyle = {
-  background: '#fef2f2',
-  border: '1px solid #fecaca',
-  color: '#dc2626',
-  borderRadius: 8,
-  padding: '10px 14px',
-  fontSize: 13,
-  fontWeight: 500,
-}
-
-const btnStyle = (loading) => ({
-  background: loading ? '#86efac' : '#166534',
-  color: '#fff',
-  border: 'none',
-  padding: '11px 0',
-  borderRadius: 8,
-  fontSize: 14,
-  fontWeight: 700,
-  cursor: loading ? 'default' : 'pointer',
-  transition: 'background 0.15s',
-  marginTop: 4,
-})

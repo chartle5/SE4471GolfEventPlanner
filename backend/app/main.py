@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
@@ -13,10 +14,23 @@ from app.routes.tournaments import router as tournaments_router
 from app.routes.register import router as register_router
 from app.services.rag import get_rag_chunk_by_id, get_rag_status, warm_rag_index
 
+logger = logging.getLogger("uvicorn.error")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Start background warmups without blocking app startup."""
+    """Verify the MongoDB connection on startup, then start background warmups."""
+    # Establish (and verify) the MongoDB connection up front so failures surface
+    # clearly at boot rather than lazily on the first request.
+    try:
+        await database.connect_to_mongo()
+        logger.info("✅ MongoDB connected: %s", database.DB_NAME)
+    except Exception as exc:  # noqa: BLE001 — we want to surface any connection failure
+        logger.error("❌ MongoDB connection failed: %s", exc)
+        if database.MONGODB_STARTUP_REQUIRED:
+            # Operators can opt into hard-failing startup when the DB is mandatory.
+            raise
+
     rag_warmup_task = asyncio.create_task(warm_rag_index())
     app.state.rag_warmup_task = rag_warmup_task
     try:

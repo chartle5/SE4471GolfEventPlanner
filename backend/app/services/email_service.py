@@ -1,51 +1,57 @@
 """
-SendGrid email helpers.
+SMTP email helpers (replaces SendGrid).
 
-Both functions are async; they delegate the blocking SendGrid SDK call to a
+Both functions are async; they delegate the blocking SMTP call to a
 thread executor via asyncio.to_thread so the FastAPI event loop stays free.
 
 Environment variables required
 ───────────────────────────────
-  SENDGRID_API_KEY     – your SendGrid API key
-  SENDGRID_FROM_EMAIL  – verified sender address in your SendGrid account
-  SENDGRID_FROM_NAME   – display name shown to recipients (optional)
+  SMTP_HOST        – SMTP server hostname  (e.g. smtp.gmail.com)
+  SMTP_PORT        – SMTP port             (default: 587, TLS/STARTTLS)
+  SMTP_USERNAME    – login username / email address
+  SMTP_PASSWORD    – login password or app-password
+  SMTP_FROM_EMAIL  – sender address shown to recipients
+  SMTP_FROM_NAME   – display name shown to recipients (optional)
+
+Gmail quick-start
+─────────────────
+  1. Enable 2-Step Verification on your Google account.
+  2. Go to myaccount.google.com → Security → App Passwords.
+  3. Generate an app password for "Mail / Other device".
+  4. Use that 16-character password as SMTP_PASSWORD.
 """
 
 import asyncio
-import base64
 import os
+import smtplib
+from email import encoders
+from email.mime.base import MIMEBase
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 from typing import List, Optional
 
-from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import (
-    Attachment,
-    Disposition,
-    Email,
-    FileContent,
-    FileName,
-    FileType,
-    Mail,
-)
-
-_SENDGRID_API_KEY: str = os.getenv("SENDGRID_API_KEY", "")
-_FROM_EMAIL: str = os.getenv("SENDGRID_FROM_EMAIL", "")
-_FROM_NAME: str = os.getenv("SENDGRID_FROM_NAME", "")
+_SMTP_HOST: str = os.getenv("SMTP_HOST", "smtp.gmail.com")
+_SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+_SMTP_USERNAME: str = os.getenv("SMTP_USERNAME", "")
+_SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
+_FROM_EMAIL: str = os.getenv("SMTP_FROM_EMAIL", "")
+_FROM_NAME: str = os.getenv("SMTP_FROM_NAME", "")
 
 
-def _from_address():
-    """Return an Email with display name if configured, otherwise plain address string."""
+def _from_header() -> str:
+    """Return a formatted From header string."""
     if _FROM_NAME:
-        return Email(_FROM_EMAIL, _FROM_NAME)
+        return f"{_FROM_NAME} <{_FROM_EMAIL}>"
     return _FROM_EMAIL
 
 
-def _build_schedule_attachment(
+def _build_schedule_html(
     schedule: List[dict],
     tournament_name: str,
     tournament_date: str = "",
     tournament_venue: str = "",
-) -> Optional[Attachment]:
-    """Generate an HTML tee-time schedule and return it as a SendGrid Attachment."""
+) -> Optional[str]:
+    """Generate an HTML tee-time schedule string, or None if schedule is empty."""
     if not schedule:
         return None
 
@@ -59,7 +65,7 @@ def _build_schedule_attachment(
         for g in schedule
     )
     subtitle = " \u2014 ".join(filter(None, [tournament_date, tournament_venue]))
-    html = f"""<!DOCTYPE html>
+    return f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8">
 <style>
   body{{font-family:Arial,sans-serif;margin:40px;color:#222}}
@@ -78,36 +84,26 @@ def _build_schedule_attachment(
   </table>
 </body></html>"""
 
-    encoded = base64.b64encode(html.encode("utf-8")).decode()
-    return Attachment(
-        FileContent(encoded),
-        FileName("tee-time-schedule.html"),
-        FileType("text/html"),
-        Disposition("attachment"),
-    )
+
+def _add_html_attachment(msg: MIMEMultipart, html_content: str, filename: str) -> None:
+    """Attach an HTML string as a file attachment to a MIMEMultipart message."""
+    part = MIMEBase("text", "html")
+    part.set_payload(html_content.encode("utf-8"))
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", "attachment", filename=filename)
+    part.add_header("Content-Type", "text/html; charset=utf-8")
+    msg.attach(part)
 
 
-def _build_rule_sheet_attachment(
-    html: str,
-    tournament_name: str,
-) -> Optional[Attachment]:
-    """Encode a rule-sheet HTML string as a SendGrid Attachment."""
-    if not html:
-        return None
-    encoded = base64.b64encode(html.encode("utf-8")).decode()
-    return Attachment(
-        FileContent(encoded),
-        FileName("player-guide.html"),
-        FileType("text/html"),
-        Disposition("attachment"),
-    )
-
-
-def _send_messages(messages: List[Mail]) -> None:
+def _send_messages(messages: List[MIMEMultipart]) -> None:
     """Synchronous helper — runs inside asyncio.to_thread."""
-    sg = SendGridAPIClient(api_key=_SENDGRID_API_KEY)
-    for msg in messages:
-        sg.send(msg)
+    with smtplib.SMTP(_SMTP_HOST, _SMTP_PORT) as server:
+        server.ehlo()
+        server.starttls()
+        server.ehlo()
+        server.login(_SMTP_USERNAME, _SMTP_PASSWORD)
+        for msg in messages:
+            server.send_message(msg)
 
 
 async def send_brochure_email(
@@ -137,24 +133,22 @@ async def send_brochure_email(
     )
     full_body = body + registration_block
 
-    attachment = _build_schedule_attachment(
+    schedule_html = _build_schedule_html(
         schedule or [], tournament_name, tournament_date, tournament_venue
     )
-    rule_sheet_attachment = _build_rule_sheet_attachment(rule_sheet_html or "", tournament_name)
 
     messages = []
     for recipient in to_emails:
-        mail = Mail(
-            from_email=_from_address(),
-            to_emails=recipient,
-            subject=subject,
-            plain_text_content=full_body,
-        )
-        if attachment:
-            mail.attachment = attachment
-        if rule_sheet_attachment:
-            mail.attachment = rule_sheet_attachment
-        messages.append(mail)
+        msg = MIMEMultipart()
+        msg["From"] = _from_header()
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(full_body, "plain"))
+        if schedule_html:
+            _add_html_attachment(msg, schedule_html, "tee-time-schedule.html")
+        if rule_sheet_html:
+            _add_html_attachment(msg, rule_sheet_html, "player-guide.html")
+        messages.append(msg)
 
     await asyncio.to_thread(_send_messages, messages)
 
@@ -170,16 +164,16 @@ async def send_email_direct(
     When html_body is provided, recipients see a rendered HTML email;
     plain text is kept as a fallback for non-HTML clients.
     """
-    messages = [
-        Mail(
-            from_email=_from_address(),
-            to_emails=recipient,
-            subject=subject,
-            plain_text_content=body,
-            html_content=html_body,
-        )
-        for recipient in to_emails
-    ]
+    messages = []
+    for recipient in to_emails:
+        msg = MIMEMultipart("alternative")
+        msg["From"] = _from_header()
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+        if html_body:
+            msg.attach(MIMEText(html_body, "html"))
+        messages.append(msg)
     await asyncio.to_thread(_send_messages, messages)
 
 
@@ -210,20 +204,19 @@ async def send_finalized_schedule_email(
         f"The {tournament_name} Organizing Committee"
     )
 
-    attachment = _build_schedule_attachment(
+    schedule_html = _build_schedule_html(
         schedule, tournament_name, tournament_date, tournament_venue
     )
 
     messages = []
     for recipient in to_emails:
-        mail = Mail(
-            from_email=_from_address(),
-            to_emails=recipient,
-            subject=subject,
-            plain_text_content=body,
-        )
-        if attachment:
-            mail.attachment = attachment
-        messages.append(mail)
+        msg = MIMEMultipart()
+        msg["From"] = _from_header()
+        msg["To"] = recipient
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain"))
+        if schedule_html:
+            _add_html_attachment(msg, schedule_html, "tee-time-schedule.html")
+        messages.append(msg)
 
     await asyncio.to_thread(_send_messages, messages)

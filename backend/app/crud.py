@@ -138,6 +138,72 @@ async def shuffle_schedule(
     return new_schedule
 
 
+async def reorder_schedule(
+    db: AsyncIOMotorDatabase,
+    tournament_id: str,
+    new_schedule: List[Dict[str, Any]],
+) -> Optional[List[Dict[str, Any]]]:
+    """
+    Persist a manually reordered schedule (from the drag-and-drop editor).
+
+    Validates that the new arrangement is a pure reordering — the same groups,
+    tee times, and exact set of players as the stored schedule — and, for team
+    events, that no team was split across groups. Raises ValueError on any
+    violation. Returns the saved schedule, or None if the tournament wasn't found.
+    """
+    from collections import Counter, defaultdict
+
+    doc = await get_tournament(db, tournament_id)
+    if doc is None:
+        return None
+    if doc["status"] == "finalized":
+        raise ValueError("Cannot reorder a finalized tournament.")
+
+    current: List[Dict[str, Any]] = doc["schedule"]
+
+    def groups_key(sched: List[Dict[str, Any]]):
+        return sorted((int(g["group"]), str(g["teeTime"])) for g in sched)
+
+    if groups_key(current) != groups_key(new_schedule):
+        raise ValueError("Reordered schedule must keep the same groups and tee times.")
+
+    current_players = Counter(p for g in current for p in g["players"])
+    new_players = Counter(p for g in new_schedule for p in g["players"])
+    if current_players != new_players:
+        raise ValueError("Reordered schedule must contain exactly the same players.")
+
+    # Server-side enforcement of the "teams stay together" rule: every player on
+    # the same registered team must land in a single tee group.
+    if doc.get("event_type") == "team":
+        registrations = await get_registrations(db, tournament_id)
+        team_members: Dict[str, set] = defaultdict(set)
+        for reg in registrations:
+            team_name = (reg.get("team_name") or "").strip().lower()
+            if team_name:
+                team_members[team_name].add(f"{reg['first_name']} {reg['last_name']}")
+
+        player_group: Dict[str, int] = {}
+        for group in new_schedule:
+            for player in group["players"]:
+                player_group[player] = int(group["group"])
+
+        for members in team_members.values():
+            groups = {player_group[m] for m in members if m in player_group}
+            if len(groups) > 1:
+                raise ValueError("Teammates must stay in the same tee group.")
+
+    normalized = [
+        {
+            "group": int(group["group"]),
+            "teeTime": str(group["teeTime"]),
+            "players": list(group["players"]),
+        }
+        for group in sorted(new_schedule, key=lambda g: int(g["group"]))
+    ]
+    await _update_schedule(db, tournament_id, normalized)
+    return normalized
+
+
 async def update_brochure_recipients(
     db: AsyncIOMotorDatabase, tournament_id: str, emails: List[str]
 ) -> bool:

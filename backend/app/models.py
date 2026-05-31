@@ -64,6 +64,33 @@ class ShuffleResponse(BaseModel):
     schedule: List[Dict[str, Any]]
 
 
+class ReorderScheduleRequest(BaseModel):
+    """A full replacement schedule produced by the drag-and-drop editor."""
+    schedule: List[Dict[str, Any]]
+
+    @field_validator("schedule")
+    @classmethod
+    def _not_empty(cls, v: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not v:
+            raise ValueError("Schedule cannot be empty")
+        return v
+
+
+class SeedPlayersRequest(BaseModel):
+    """Generate synthetic test players for a tournament (dev/test helper)."""
+    count: int = Field(gt=0, le=500)
+    clear: bool = False
+
+
+class SeedPlayersResponse(BaseModel):
+    success: bool
+    created: int
+    failed: int
+    players_registered: int
+    total_players: int
+    message: str
+
+
 # ─────────────────────────── player registration ─────────────────────────
 
 

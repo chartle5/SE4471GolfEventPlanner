@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import Icon from '../components/Icon'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Reservations() {
   const navigate = useNavigate()
   const [reservations, setReservations] = useState([])
+  const [pendingDelete, setPendingDelete] = useState(null)
 
   useEffect(() => {
     try {
@@ -14,9 +17,9 @@ export default function Reservations() {
     }
   }, [])
 
-  function handleDelete(e, id) {
-    e.stopPropagation()
-    if (!window.confirm('Remove this reservation?')) return
+  function confirmDelete() {
+    const id = pendingDelete
+    setPendingDelete(null)
     try {
       const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
       const updated = stored.filter(r => String(r.id) !== String(id))
@@ -25,132 +28,91 @@ export default function Reservations() {
     } catch {}
   }
 
-  if (reservations.length === 0) {
-    return (
-      <div>
-        <h1 style={{ margin: 0 }}>Reservations</h1>
-        <div className="muted small">Saved tournaments</div>
-        <div style={{
-          marginTop: 40,
-          textAlign: 'center',
-          color: '#6b7280',
-          padding: 32,
-          border: '2px dashed #e5e7eb',
-          borderRadius: 10,
-        }}>
-          <p style={{ margin: 0, fontSize: 15 }}>No reservations saved yet.</p>
-          <p style={{ margin: '8px 0 0', fontSize: 13 }}>
-            Plan a tournament and click <strong>Save Tournament</strong> to see it here.
-          </p>
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div>
-      <h1 style={{ margin: 0 }}>Reservations</h1>
-      <div className="muted small">Saved tournaments — select one to view documents and send options</div>
-      <div style={{ height: 16 }} />
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {reservations.map(res => {
-          const t = res.tournament || {}
-          return (
-            <div
-              key={res.id}
-              className="card"
-              style={{ padding: 0, overflow: 'hidden', cursor: 'pointer' }}
-              onClick={() => navigate(`/reservations/${res.id}`)}
-            >
-              {/* Card header */}
-              <div style={{
-                background: '#166534',
-                color: '#fff',
-                padding: '14px 20px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-              }}>
-                <div>
-                  <div style={{ fontWeight: 700, fontSize: 16 }}>{t.name || 'Unnamed Tournament'}</div>
-                  <div style={{ fontSize: 13, opacity: 0.85, marginTop: 3 }}>
-                    {[t.date, t.venue, t.format].filter(Boolean).join(' · ')}
-                  </div>
-                  <div style={{ fontSize: 12, opacity: 0.7, marginTop: 2 }}>
-                    {t.playerCount > 0 && <span>{t.playerCount} players</span>}
-                    {t.teeTimeStart && <span> · First tee: {t.teeTimeStart}</span>}
-                    {t.teeTimeInterval > 0 && <span> · {t.teeTimeInterval}-min intervals</span>}
-                  </div>
-                </div>
-                <div style={{ fontSize: 11, opacity: 0.65, textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                  Saved {new Date(res.savedAt).toLocaleDateString()}
-                </div>
-              </div>
-
-              {/* Action bar */}
-              <div
-                style={{
-                  padding: '10px 20px',
-                  display: 'flex',
-                  gap: 10,
-                  alignItems: 'center',
-                  background: '#f9fafb',
-                }}
-                onClick={e => e.stopPropagation()}
-              >
-                <button
-                  onClick={() => navigate(`/reservations/${res.id}`)}
-                  style={{
-                    background: '#166534',
-                    color: '#fff',
-                    border: 'none',
-                    padding: '6px 16px',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    cursor: 'pointer',
-                  }}
-                >
-                  View Documents
-                </button>
-
-                {res.tournament_id && (
-                  <span style={{
-                    fontSize: 11,
-                    background: '#d1fae5',
-                    color: '#166534',
-                    borderRadius: 4,
-                    padding: '2px 8px',
-                    fontWeight: 500,
-                  }}>
-                    DB
-                  </span>
-                )}
-
-                <div style={{ flex: 1 }} />
-
-                <button
-                  onClick={e => handleDelete(e, res.id)}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #dc2626',
-                    color: '#dc2626',
-                    padding: '5px 14px',
-                    borderRadius: 6,
-                    fontSize: 13,
-                    cursor: 'pointer',
-                    fontWeight: 500,
-                  }}
-                >
-                  Delete
-                </button>
-              </div>
-            </div>
-          )
-        })}
+      <div className="page-head">
+        <div className="eyebrow">Saved Events</div>
+        <h1 className="page-title">Reservations</h1>
+        <div className="page-sub">Select a tournament to view documents and send options</div>
       </div>
+
+      {reservations.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon"><Icon name="trophy" size={26} /></div>
+          <h3>No reservations yet</h3>
+          <p style={{ margin: '6px 0 18px' }}>
+            Plan a tournament and click <strong>Save Tournament</strong> to see it here.
+          </p>
+          <button className="btn btn-primary" onClick={() => navigate('/plan')}>
+            <Icon name="flag" size={16} /> Plan a Tournament
+          </button>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {reservations.map(res => {
+            const t = res.tournament || {}
+            return (
+              <div
+                key={res.id}
+                className="card card-flush card-hover"
+                style={{ cursor: 'pointer' }}
+                onClick={() => navigate(`/reservations/${res.id}`)}
+              >
+                <div style={{
+                  background: 'linear-gradient(135deg, var(--forest) 0%, var(--pine) 100%)',
+                  color: '#fff',
+                  padding: '18px 22px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontWeight: 700, fontSize: 20, letterSpacing: 0.3 }}>
+                      {t.name || 'Unnamed Tournament'}
+                    </div>
+                    <div style={{ fontSize: 13, opacity: 0.9, marginTop: 5, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                      {[t.date, t.venue, t.format].filter(Boolean).join(' · ')}
+                    </div>
+                    <div style={{ fontSize: 12, opacity: 0.78, marginTop: 4 }}>
+                      {t.playerCount > 0 && <span>{t.playerCount} players</span>}
+                      {t.teeTimeStart && <span> · First tee {t.teeTimeStart}</span>}
+                      {t.teeTimeInterval > 0 && <span> · {t.teeTimeInterval}-min intervals</span>}
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, opacity: 0.7, textAlign: 'right', flexShrink: 0 }}>
+                    Saved {new Date(res.savedAt).toLocaleDateString()}
+                  </div>
+                </div>
+
+                <div
+                  style={{ padding: '12px 22px', display: 'flex', gap: 10, alignItems: 'center', background: 'var(--paper)' }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <button className="btn btn-primary btn-sm" onClick={() => navigate(`/reservations/${res.id}`)}>
+                    <Icon name="doc" size={15} /> View Documents
+                  </button>
+                  {res.tournament_id && <span className="badge badge-dot">Saved to DB</span>}
+                  <div className="spacer" />
+                  <button className="btn btn-danger btn-sm" onClick={() => setPendingDelete(res.id)}>
+                    <Icon name="trash" size={15} /> Delete
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {pendingDelete != null && (
+        <ConfirmDialog
+          title="Remove reservation?"
+          message="This will remove the saved tournament from this device. This cannot be undone."
+          confirmLabel="Remove"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDelete(null)}
+        />
+      )}
     </div>
   )
 }
-

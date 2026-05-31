@@ -5,6 +5,7 @@ All routes are prefixed with /tournaments.
 
 import logging
 import os
+import random
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -13,8 +14,11 @@ from app import crud
 from app.database import get_database
 from app.dependencies import get_current_user
 from app.models import (
+    ReorderScheduleRequest,
     SaveTournamentRequest,
     SaveTournamentResponse,
+    SeedPlayersRequest,
+    SeedPlayersResponse,
     SendBrochureRequest,
     SendBrochureResponse,
     SendClubSheetRequest,
@@ -23,6 +27,18 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/tournaments", tags=["tournaments"])
+
+# Name pools for synthetic test players — mirrors register_test_players.sh.
+_SEED_FIRST_NAMES = [
+    "Jack", "Emma", "Liam", "Olivia", "Noah", "Ava", "William", "Sophia", "James", "Isabella",
+    "Oliver", "Mia", "Benjamin", "Charlotte", "Elijah", "Amelia", "Lucas", "Harper", "Mason", "Evelyn",
+    "Logan", "Abigail", "Ethan", "Emily", "Aiden", "Elizabeth", "Ryan", "Sofia", "Michael", "Victoria",
+]
+_SEED_LAST_NAMES = [
+    "Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Wilson", "Taylor",
+    "Anderson", "Thomas", "Jackson", "White", "Harris", "Martin", "Thompson", "Robinson", "Clark", "Rodriguez",
+    "Lewis", "Lee", "Walker", "Hall", "Allen", "Young", "Hernandez", "King", "Wright", "Scott",
+]
 
 # Dependency aliases for cleaner function signatures
 DB = Annotated[object, Depends(get_database)]
@@ -203,6 +219,101 @@ async def shuffle_schedule(tournament_id: str, db: DB):
     return {"schedule": new_schedule}
 
 
+# ─────────────────────────── reorder (drag & drop) ───────────────────────
+
+
+@router.post("/{tournament_id}/reorder", response_model=ShuffleResponse)
+async def reorder_schedule(
+    tournament_id: str, payload: ReorderScheduleRequest, db: DB, current_user: CurrentUser
+):
+    """
+    Persist a manually reordered schedule from the drag-and-drop editor.
+    Validates that no players were added/removed and that teammates stay grouped.
+    """
+    try:
+        new_schedule = await crud.reorder_schedule(db, tournament_id, payload.schedule)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if new_schedule is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    return {"schedule": new_schedule}
+
+
+# ─────────────────────────── seed test players ───────────────────────────
+
+
+@router.post("/{tournament_id}/seed-players", response_model=SeedPlayersResponse)
+async def seed_players(
+    tournament_id: str, payload: SeedPlayersRequest, db: DB, current_user: CurrentUser
+):
+    """
+    Register synthetic test players for a tournament — the server-side equivalent
+    of register_test_players.sh, exposed so the organizer can seed players from
+    the UI without the terminal. Names, phone numbers, ~15% rental clubs, and
+    (for team events) sequential team assignment mirror the shell script.
+    """
+    doc = await crud.get_tournament(db, tournament_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+    if doc["status"] == "finalized":
+        raise HTTPException(status_code=400, detail="Cannot seed a finalized tournament")
+
+    if payload.clear:
+        await crud.clear_registrations(db, tournament_id)
+
+    event_type = doc.get("event_type", "individual")
+    team_size = max(1, int(doc.get("team_size") or 1))
+    already = await crud.count_registrations(db, tournament_id)
+
+    n_first = len(_SEED_FIRST_NAMES)
+    n_last = len(_SEED_LAST_NAMES)
+    created = 0
+    failed = 0
+
+    for i in range(1, payload.count + 1):
+        global_num = already + i
+        first = _SEED_FIRST_NAMES[(global_num - 1) % n_first]
+        last = _SEED_LAST_NAMES[((global_num - 1) * 7 + 3) % n_last]
+        phone = f"555-{global_num:04d}"
+
+        rental = random.randint(0, 99) < 15
+        club_hand = random.choice(["left", "right"]) if rental else None
+
+        team_name = None
+        if event_type == "team":
+            team_name = f"Team {((already + i - 1) // team_size) + 1}"
+
+        result = await crud.register_player(
+            db,
+            tournament_id,
+            first,
+            last,
+            phone_number=phone,
+            rental_clubs=rental,
+            club_hand=club_hand,
+            team_name=team_name,
+            event_type=event_type,
+        )
+        if result is None:
+            failed += 1
+            break  # schedule is full — stop early
+        created += 1
+
+    players_registered = await crud.count_registrations(db, tournament_id)
+    return SeedPlayersResponse(
+        success=created > 0,
+        created=created,
+        failed=failed,
+        players_registered=players_registered,
+        total_players=doc["player_count"],
+        message=(
+            f"{created} test player{'s' if created != 1 else ''} registered successfully."
+            if created > 0
+            else "No players were registered — the tournament may be full."
+        ),
+    )
+
+
 # ─────────────────────────── send brochure email ─────────────────────────
 
 
@@ -213,7 +324,7 @@ async def send_brochure(
     tournament_id: str, payload: SendBrochureRequest, db: DB
 ):
     """
-    Store recipient emails and send the tournament brochure via SendGrid.
+    Store recipient emails and send the tournament brochure via SMTP email.
     The email body automatically includes a registration link.
     """
     doc = await crud.get_tournament(db, tournament_id)

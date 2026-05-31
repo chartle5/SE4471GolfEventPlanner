@@ -1,5 +1,33 @@
+# Dependencies
 */node_modules*
+node_modules/
+
+# Environment variables
 */.env*
+.env
+.env.*
+
+# Python
 */app/__pycache__*
 */__pycache__*/*
 *.cpython*
+*.pyc
+*.pyo
+__pycache__/
+
+# Virtual environments
+*venv/
+*/venv/
+backend/venv/
+.venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/

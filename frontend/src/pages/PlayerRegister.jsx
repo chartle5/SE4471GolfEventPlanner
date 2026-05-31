@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useParams } from 'react-router-dom'
+import Icon from '../components/Icon'
 
 export default function PlayerRegister() {
   const { token } = useParams()
@@ -69,9 +70,10 @@ export default function PlayerRegister() {
 
   if (loading) {
     return (
-      <div style={pageStyle}>
-        <div style={cardStyle}>
-          <p style={{ textAlign: 'center', color: '#6b7280' }}>Loading tournament details…</p>
+      <div className="auth-shell">
+        <div className="auth-card" style={{ textAlign: 'center' }}>
+          <span className="spinner" style={{ color: 'var(--fairway)', width: 22, height: 22 }} />
+          <p className="muted" style={{ marginTop: 12 }}>Loading tournament details…</p>
         </div>
       </div>
     )
@@ -79,14 +81,15 @@ export default function PlayerRegister() {
 
   if (notFound) {
     return (
-      <div style={pageStyle}>
-        <div style={cardStyle}>
-          <div style={headerStyle}>
-            <h1 style={{ margin: 0, fontSize: 20 }}>Registration Link Not Found</h1>
+      <div className="auth-shell">
+        <div className="auth-card" style={{ textAlign: 'center' }}>
+          <div className="auth-mark" style={{ background: 'var(--danger-bg)', color: 'var(--danger)' }}>
+            <Icon name="close" size={26} strokeWidth={2} />
           </div>
-          <div style={{ padding: '24px 28px', color: '#374151' }}>
-            <p>This registration link is invalid or has expired. Please contact the tournament organiser.</p>
-          </div>
+          <div className="auth-title" style={{ fontSize: 22 }}>Link Not Found</div>
+          <p className="muted" style={{ marginTop: 10 }}>
+            This registration link is invalid or has expired. Please contact the tournament organiser.
+          </p>
         </div>
       </div>
     )
@@ -97,97 +100,70 @@ export default function PlayerRegister() {
   const total = info?.total_slots ?? 0
 
   return (
-    <div style={pageStyle}>
-      <div style={cardStyle}>
+    <div className="auth-shell">
+      <div className="auth-card" style={{ maxWidth: 460, padding: 0, overflow: 'hidden' }}>
         {/* Card header */}
-        <div style={headerStyle}>
-          <h1 style={{ margin: 0, fontSize: 20 }}>{info.name}</h1>
-          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.85 }}>
+        <div style={{
+          background: 'linear-gradient(135deg, var(--forest) 0%, var(--pine) 100%)',
+          color: '#fff', padding: '24px 30px',
+        }}>
+          <div className="eyebrow" style={{ color: 'var(--champagne)', marginBottom: 6 }}>Player Registration</div>
+          <h1 style={{ margin: 0, fontSize: 24, color: '#fff' }}>{info.name}</h1>
+          <div style={{ marginTop: 6, fontSize: 13, opacity: 0.88 }}>
             {info.date && <span>{info.date}</span>}
-            {info.venue && <span> &nbsp;·&nbsp; {info.venue}</span>}
-            {info.format && <span> &nbsp;·&nbsp; {info.format}</span>}
+            {info.venue && <span> · {info.venue}</span>}
+            {info.format && <span> · {info.format}</span>}
           </div>
         </div>
 
-        <div style={{ padding: '20px 28px' }}>
+        <div style={{ padding: '24px 30px' }}>
           {/* Slot progress */}
-          <div style={{
-            background: isFull ? '#fef2f2' : '#f0fdf4',
-            border: `1px solid ${isFull ? '#fecaca' : '#86efac'}`,
-            borderRadius: 8,
-            padding: '10px 16px',
-            marginBottom: 20,
-            fontSize: 13,
-            color: isFull ? '#dc2626' : '#166534',
-            fontWeight: 600,
-          }}>
-            {isFull
-              ? 'This tournament is full — no more slots available.'
-              : `${registered} of ${total} spots filled — ${total - registered} remaining`}
+          <div className={`notice ${isFull ? 'notice-danger' : 'notice-success'}`} style={{ marginBottom: 20, fontWeight: 600 }}>
+            <Icon name={isFull ? 'close' : 'users'} size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {isFull
+                ? 'This tournament is full — no more slots available.'
+                : `${registered} of ${total} spots filled — ${total - registered} remaining`}
+            </span>
           </div>
 
           {result?.ok ? (
-            <div style={{
-              background: '#f0fdf4',
-              border: '1px solid #86efac',
-              borderRadius: 10,
-              padding: '20px 24px',
-              textAlign: 'center',
-            }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🏌️</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#166534', marginBottom: 6 }}>
+            <div className="notice notice-success" style={{ flexDirection: 'column', alignItems: 'center', textAlign: 'center', padding: '26px 24px' }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%', marginBottom: 12,
+                background: '#fff', border: '1px solid var(--success-bd)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--fairway)',
+              }}>
+                <Icon name="check" size={28} strokeWidth={2.2} />
+              </div>
+              <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, fontWeight: 700, color: 'var(--forest)', marginBottom: 6 }}>
                 You're registered!
               </div>
-              <div style={{ fontSize: 14, color: '#374151' }}>{result.message}</div>
+              <div style={{ fontSize: 14, color: 'var(--slate)' }}>{result.message}</div>
               {result.slot && (
-                <div style={{ marginTop: 10, fontSize: 13, color: '#6b7280' }}>
-                  Your slot: <strong style={{ color: '#166534' }}>{result.slot}</strong>
+                <div style={{ marginTop: 10, fontSize: 13, color: 'var(--muted)' }}>
+                  Your slot: <strong style={{ color: 'var(--forest)' }}>{result.slot}</strong>
                 </div>
               )}
             </div>
           ) : (
             !isFull && (
               <form onSubmit={handleSubmit}>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>First Name</label>
-                  <input
-                    type="text"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                    required
-                    disabled={submitting}
-                    style={inputStyle}
-                    placeholder="e.g. Jane"
-                  />
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label className="field-label">First Name</label>
+                  <input type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} required disabled={submitting} placeholder="e.g. Jane" />
                 </div>
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Last Name</label>
-                  <input
-                    type="text"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                    required
-                    disabled={submitting}
-                    style={inputStyle}
-                    placeholder="e.g. Smith"
-                  />
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label className="field-label">Last Name</label>
+                  <input type="text" value={lastName} onChange={(e) => setLastName(e.target.value)} required disabled={submitting} placeholder="e.g. Smith" />
+                </div>
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label className="field-label">Phone Number</label>
+                  <input type="tel" value={phoneNumber} onChange={(e) => setPhoneNumber(e.target.value)} required disabled={submitting} placeholder="e.g. 555-123-4567" />
                 </div>
 
-                <div style={{ marginBottom: 14 }}>
-                  <label style={labelStyle}>Phone Number</label>
-                  <input
-                    type="tel"
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    required
-                    disabled={submitting}
-                    style={inputStyle}
-                    placeholder="e.g. 555-123-4567"
-                  />
-                </div>
-
-                <div style={{ marginBottom: 14 }}>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, color: '#374151', cursor: 'pointer' }}>
+                <div className="field" style={{ marginBottom: 14 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 600, fontSize: 13, color: 'var(--slate)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
                       checked={rentalClubs}
@@ -199,25 +175,11 @@ export default function PlayerRegister() {
                   {rentalClubs && (
                     <div style={{ marginTop: 8, display: 'flex', gap: 24, paddingLeft: 4 }}>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name="clubHand"
-                          value="right"
-                          checked={clubHand === 'right'}
-                          onChange={() => setClubHand('right')}
-                          disabled={submitting}
-                        />
+                        <input type="radio" name="clubHand" value="right" checked={clubHand === 'right'} onChange={() => setClubHand('right')} disabled={submitting} />
                         Right Handed
                       </label>
                       <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                        <input
-                          type="radio"
-                          name="clubHand"
-                          value="left"
-                          checked={clubHand === 'left'}
-                          onChange={() => setClubHand('left')}
-                          disabled={submitting}
-                        />
+                        <input type="radio" name="clubHand" value="left" checked={clubHand === 'left'} onChange={() => setClubHand('left')} disabled={submitting} />
                         Left Handed
                       </label>
                     </div>
@@ -225,40 +187,22 @@ export default function PlayerRegister() {
                 </div>
 
                 {info?.event_type === 'team' && (
-                  <div style={{ marginBottom: 14 }}>
-                    <label style={labelStyle}>Team Name</label>
-                    <input
-                      type="text"
-                      value={teamName}
-                      onChange={(e) => setTeamName(e.target.value)}
-                      required
-                      disabled={submitting}
-                      style={inputStyle}
-                      placeholder="e.g. Eagles"
-                    />
-                    <div style={{ fontSize: 11, color: '#6b7280', marginTop: 4 }}>
+                  <div className="field" style={{ marginBottom: 14 }}>
+                    <label className="field-label">Team Name</label>
+                    <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} required disabled={submitting} placeholder="e.g. Eagles" />
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                       Players with the same team name will be grouped together.
                     </div>
                   </div>
                 )}
 
                 {result && !result.ok && (
-                  <div style={{
-                    marginBottom: 14,
-                    padding: '10px 14px',
-                    borderRadius: 8,
-                    background: '#fef2f2',
-                    border: '1px solid #fecaca',
-                    color: '#dc2626',
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}>
-                    {result.message}
-                  </div>
+                  <div className="notice notice-danger" style={{ marginBottom: 14, fontWeight: 600 }}>{result.message}</div>
                 )}
 
                 <button
                   type="submit"
+                  className="btn btn-gold btn-block"
                   disabled={
                     submitting ||
                     !firstName.trim() ||
@@ -267,19 +211,9 @@ export default function PlayerRegister() {
                     (info?.event_type === 'team' && !teamName.trim()) ||
                     (rentalClubs && !clubHand)
                   }
-                  style={{
-                    width: '100%',
-                    background: submitting ? '#86efac' : '#166534',
-                    color: '#fff',
-                    border: 'none',
-                    padding: '11px 0',
-                    borderRadius: 8,
-                    fontSize: 15,
-                    fontWeight: 700,
-                    cursor: submitting ? 'default' : 'pointer',
-                  }}
+                  style={{ padding: '12px 0', fontSize: 15 }}
                 >
-                  {submitting ? 'Registering…' : 'Register for Tournament'}
+                  {submitting ? <><span className="spinner" /> Registering…</> : 'Register for Tournament'}
                 </button>
               </form>
             )
@@ -288,49 +222,4 @@ export default function PlayerRegister() {
       </div>
     </div>
   )
-}
-
-const pageStyle = {
-  minHeight: '100vh',
-  background: '#f0fdf4',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontFamily: 'system-ui, sans-serif',
-  padding: '32px 16px',
-}
-
-const cardStyle = {
-  background: '#fff',
-  borderRadius: 12,
-  boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-  width: '100%',
-  maxWidth: 440,
-  overflow: 'hidden',
-}
-
-const headerStyle = {
-  background: '#166534',
-  color: '#fff',
-  padding: '20px 28px',
-}
-
-const labelStyle = {
-  display: 'block',
-  fontWeight: 600,
-  fontSize: 13,
-  marginBottom: 5,
-  color: '#374151',
-}
-
-const inputStyle = {
-  width: '100%',
-  boxSizing: 'border-box',
-  border: '1px solid #d1d5db',
-  borderRadius: 8,
-  padding: '9px 12px',
-  fontSize: 14,
-  fontFamily: 'inherit',
-  outline: 'none',
-  color: '#111827',
 }
