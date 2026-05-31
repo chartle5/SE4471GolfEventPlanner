@@ -334,6 +334,84 @@ async def _build_index() -> None:
     )
 
 
+def _build_index_sync() -> None:
+    """Build the RAG index synchronously, intended to run via asyncio.to_thread().
+
+    Runs entirely outside the event loop so the app can serve requests
+    (including health checks) while the model loads.
+    """
+    global _CHUNK_INDEX, _INDEX_READY
+
+    chunks, source_documents = _base_chunks()
+    _update_rag_status(
+        state="building",
+        ready=False,
+        source_kind=source_documents.source_kind,
+        document_count=len(source_documents.documents),
+        chunk_count=0,
+        started_at=_timestamp_utc(),
+        finished_at=None,
+        last_error="",
+        skipped_files=source_documents.skipped_files,
+    )
+
+    if not chunks:
+        _CHUNK_INDEX = []
+        _INDEX_READY = True
+        logger.warning("RAG index build completed with 0 chunks.")
+        _update_rag_status(
+            state="ready",
+            ready=True,
+            finished_at=_timestamp_utc(),
+            chunk_count=0,
+        )
+        return
+
+    try:
+        model = _load_model()
+        raw = model.encode(
+            [chunk.text for chunk in chunks],
+            normalize_embeddings=True,
+            convert_to_numpy=True,
+            show_progress_bar=False,
+        )
+        embeddings: List[List[float]] = raw.tolist()
+    except Exception as exc:
+        _CHUNK_INDEX = []
+        _INDEX_READY = False
+        _update_rag_status(
+            state="error",
+            ready=False,
+            finished_at=_timestamp_utc(),
+            last_error=str(exc),
+        )
+        raise
+
+    _CHUNK_INDEX = [
+        IndexedChunk(
+            document_id=chunk.document_id,
+            title=chunk.title,
+            chunk_id=chunk.chunk_id,
+            text=chunk.text,
+            embedding=embeddings[index],
+        )
+        for index, chunk in enumerate(chunks)
+    ]
+    _INDEX_READY = True
+    _update_rag_status(
+        state="ready",
+        ready=True,
+        chunk_count=len(_CHUNK_INDEX),
+        finished_at=_timestamp_utc(),
+        last_error="",
+    )
+    logger.info(
+        "RAG index ready with %s chunk(s) using embedding model %s.",
+        len(_CHUNK_INDEX),
+        LOCAL_EMBEDDING_MODEL,
+    )
+
+
 async def ensure_rag_index() -> None:
     if _INDEX_READY:
         return
@@ -351,7 +429,9 @@ async def warm_rag_index() -> None:
 
     logger.info("Starting background RAG warmup.")
     try:
-        await ensure_rag_index()
+        # Run entirely in a thread so the event loop (and HTTP health checks)
+        # are never blocked while the model loads or embeddings are computed.
+        await asyncio.to_thread(_build_index_sync)
     except asyncio.CancelledError:
         _update_rag_status(
             state="idle",
@@ -371,9 +451,11 @@ async def retrieve_relevant_chunks(
     if not query.strip():
         return []
 
-    await ensure_rag_index()
+    if not _INDEX_READY:
+        logger.warning("RAG index is not ready yet; skipping retrieval for this query.")
+        return []
 
-    query_embedding = (await _embed_texts([query.strip()]))[0]
+    query_embedding = (await asyncio.to_thread(_encode_texts_sync, [query.strip()]))[0]
 
     ranked_chunks = [
         RetrievedChunk(
@@ -395,7 +477,8 @@ async def get_rag_chunk_by_id(chunk_id: str) -> Dict[str, Any] | None:
     if not target:
         return None
 
-    await ensure_rag_index()
+    if not _INDEX_READY:
+        return None
     for chunk in _CHUNK_INDEX:
         if chunk.chunk_id == target:
             return {
