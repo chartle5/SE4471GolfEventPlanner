@@ -334,7 +334,7 @@ async def send_brochure(
     # Persist recipients so they can later receive the finalized schedule
     await crud.update_brochure_recipients(db, tournament_id, payload.emails)
 
-    frontend_base = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    frontend_base = os.getenv("FRONTEND_URL", "http://localhost:5173")
     registration_link = f"{frontend_base}/register/{doc['registration_token']}"
 
     from app.services.email_service import send_brochure_email  # local import avoids circular

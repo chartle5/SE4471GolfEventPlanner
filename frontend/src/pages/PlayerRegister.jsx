@@ -20,7 +20,7 @@ export default function PlayerRegister() {
   useEffect(() => {
     async function fetchInfo() {
       try {
-        const res = await fetch(`http://localhost:8000/register/${token}`)
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/register/${token}`)
         if (res.status === 404) { setNotFound(true); return }
         const data = await res.json()
         setInfo(data)
@@ -42,7 +42,7 @@ export default function PlayerRegister() {
     setSubmitting(true)
     setResult(null)
     try {
-      const res = await fetch(`http://localhost:8000/register/${token}`, {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/register/${token}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -58,7 +58,7 @@ export default function PlayerRegister() {
       setResult({ ok: data.success, message: data.message, slot: data.slot_description })
       if (data.success) {
         // Refresh slot availability
-        const infoRes = await fetch(`http://localhost:8000/register/${token}`)
+        const infoRes = await fetch(`${import.meta.env.VITE_API_URL}/register/${token}`)
         if (infoRes.ok) setInfo(await infoRes.json())
       }
     } catch {

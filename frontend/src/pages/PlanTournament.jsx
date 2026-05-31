@@ -304,7 +304,7 @@ export default function PlanTournament() {
     async function pollRagStatus() {
       let nextDelay = 5000
       try {
-        const response = await fetch('http://localhost:8000/rag/status')
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/rag/status`)
         if (!response.ok) {
           throw new Error(`Status ${response.status}`)
         }
@@ -386,7 +386,7 @@ export default function PlanTournament() {
 
       setActiveSourceLoading(true)
       try {
-        const response = await fetch(`http://localhost:8000/rag/chunk/${encodeURIComponent(activeSource.chunk_id)}`)
+        const response = await fetch(`${import.meta.env.VITE_API_URL}/rag/chunk/${encodeURIComponent(activeSource.chunk_id)}`)
         if (!response.ok) {
           throw new Error(`Status ${response.status}`)
         }
@@ -415,7 +415,7 @@ export default function PlanTournament() {
 
   async function callGenerate(currentTournament) {
     try {
-      const res = await fetch('http://localhost:8000/generate', {
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tournament: currentTournament }),
@@ -431,7 +431,7 @@ export default function PlanTournament() {
     let tournament_id = null
     let registration_token = ''
     try {
-      const saveRes = await fetch('http://localhost:8000/tournaments', {
+      const saveRes = await fetch(`${import.meta.env.VITE_API_URL}/tournaments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -518,7 +518,7 @@ export default function PlanTournament() {
     setLoading(true)
 
     try {
-      const response = await fetch('http://localhost:8000/chat', {
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
