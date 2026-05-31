@@ -60,7 +60,7 @@ export default function TournamentDetail() {
     if (!res?.tournament_id) return
     async function fetchLive() {
       try {
-        const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/schedule`)
+        const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/schedule`)
         if (r.ok) setLiveData(await r.json())
       } catch {}
     }
@@ -73,7 +73,7 @@ export default function TournamentDetail() {
   async function loadTeamRegistrations() {
     if (!res?.tournament_id) return
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/registrations`, { headers: authHeaders() })
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/registrations`, { headers: authHeaders() })
       if (r.ok) {
         const data = await r.json()
         setTeamRegistrations(data.registrations || [])
@@ -99,7 +99,7 @@ export default function TournamentDetail() {
   async function refreshSchedule() {
     if (!res?.tournament_id) return
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/schedule`)
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/schedule`)
       if (r.ok) setLiveData(await r.json())
     } catch { /* ignore */ }
     loadTeamRegistrations()
@@ -108,7 +108,7 @@ export default function TournamentDetail() {
   async function handleSaveOrder(newSchedule) {
     setSavingOrder(true)
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/reorder`, {
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/reorder`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ schedule: newSchedule }),
@@ -133,7 +133,7 @@ export default function TournamentDetail() {
     if (shuffling || !res?.tournament_id) return
     setShuffling(true)
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/shuffle`, { method: 'POST' })
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/shuffle`, { method: 'POST' })
       const d = await r.json()
       if (r.ok) {
         setLiveData(prev => ({ ...(prev || {}), schedule: d.schedule }))
@@ -156,7 +156,7 @@ export default function TournamentDetail() {
     }
     setSeeding(true)
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/seed-players`, {
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/seed-players`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ count, clear: seedClear }),
@@ -219,7 +219,7 @@ export default function TournamentDetail() {
     // Lazy-save to DB if no token yet
     if (!token && res.tournament && res.schedule && res.brochure) {
       try {
-        const saveRes = await fetch('http://localhost:8000/tournaments', {
+        const saveRes = await fetch(`${import.meta.env.VITE_API_URL}/tournaments`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', ...authHeaders() },
           body: JSON.stringify({ tournament: res.tournament, schedule: res.schedule, brochure: res.brochure }),
@@ -238,7 +238,7 @@ export default function TournamentDetail() {
     }
 
     const registrationLink = token ? `${window.location.origin}/player-register/${token}` : ''
-    await doSend('http://localhost:8000/email/send-invite', {
+    await doSend(`${import.meta.env.VITE_API_URL}/email/send-invite`, {
       recipients: recipientList,
       tournament_meta: res.brochure?.meta || res.tournament || {},
       registration_link: registrationLink,
@@ -251,7 +251,7 @@ export default function TournamentDetail() {
     const displaySchedule = liveData?.schedule || res.schedule || []
     const t = res.tournament || {}
     const meta = res.brochure?.meta || {}
-    await doSend('http://localhost:8000/email/send', {
+    await doSend(`${import.meta.env.VITE_API_URL}/email/send`, {
       recipients: recipientList,
       subject: res.brochure?.subject || 'Tournament Schedule',
       body: res.brochure?.body || '',
@@ -266,7 +266,7 @@ export default function TournamentDetail() {
   async function handleSendRuleSheet() {
     const recipientList = parseEmails(emails)
     if (!recipientList.length) { setSendResult({ ok: false, message: 'Please enter at least one email address.' }); return }
-    await doSend('http://localhost:8000/email/send-rule-sheet', {
+    await doSend(`${import.meta.env.VITE_API_URL}/email/send-rule-sheet`, {
       recipients: recipientList,
       tournament_meta: res.tournament || {},
     })
@@ -275,7 +275,7 @@ export default function TournamentDetail() {
   async function handleSendFnb() {
     const recipientList = parseEmails(emails)
     if (!recipientList.length) { setSendResult({ ok: false, message: 'Please enter at least one email address.' }); return }
-    await doSend('http://localhost:8000/email/send-fnb-summary', {
+    await doSend(`${import.meta.env.VITE_API_URL}/email/send-fnb-summary`, {
       recipients: recipientList,
       tournament_meta: res.tournament || {},
     })
@@ -287,7 +287,7 @@ export default function TournamentDetail() {
     setSending(true)
     setSendResult(null)
     try {
-      const r = await fetch(`http://localhost:8000/tournaments/${res.tournament_id}/send-club-sheet`, {
+      const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/send-club-sheet`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({
@@ -312,7 +312,7 @@ export default function TournamentDetail() {
     setPlacardLoading(true)
     try {
       const response = await fetch(
-        `http://localhost:8000/tournaments/${res.tournament_id}/cart-placards`,
+        `${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/cart-placards`,
         { headers: authHeaders() }
       )
       if (!response.ok) { alert('Failed to generate cart placards.'); return }
@@ -339,7 +339,7 @@ export default function TournamentDetail() {
     setRegistrantsLoading(true)
     try {
       const r = await fetch(
-        `http://localhost:8000/tournaments/${res.tournament_id}/registrations`,
+        `${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/registrations`,
         { headers: authHeaders() }
       )
       if (r.ok) setRegistrantsData(await r.json())

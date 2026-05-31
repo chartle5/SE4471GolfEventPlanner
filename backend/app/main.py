@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
@@ -45,9 +46,15 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Golf Tournament Planner API", lifespan=lifespan)
 
+_frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173").rstrip("/")
+_allowed_origins = [_frontend_url]
+# Always allow local Vite dev server when running locally
+if _frontend_url != "http://localhost:5173":
+    _allowed_origins.append("http://localhost:5173")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=_allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

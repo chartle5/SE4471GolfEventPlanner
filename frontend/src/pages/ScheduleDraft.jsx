@@ -68,7 +68,7 @@ export default function ScheduleDraft() {
 
       // Attempt to persist to MongoDB so we get a registration token
       try {
-        const res = await fetch('http://localhost:8000/tournaments', {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/tournaments`, {
           method: 'POST',
           headers: authHeaders(),
           body: JSON.stringify({ tournament, schedule, brochure }),
@@ -238,7 +238,7 @@ export default function ScheduleDraft() {
                   if (!emails.length) { setRuleSheetResult({ ok: false, message: 'Please enter at least one email address.' }); return }
                   setRuleSheetSending(true); setRuleSheetResult(null)
                   try {
-                    const r = await fetch('http://localhost:8000/email/send-rule-sheet', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
+                    const r = await fetch(`${import.meta.env.VITE_API_URL}/email/send-rule-sheet`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
                     const d = await r.json()
                     setRuleSheetResult({ ok: d.success, message: d.message })
                     if (d.success) setTimeout(() => setRuleSheetModal(false), 2000)
@@ -291,7 +291,7 @@ export default function ScheduleDraft() {
                   if (!emails.length) { setFnbResult({ ok: false, message: 'Please enter at least one email address.' }); return }
                   setFnbSending(true); setFnbResult(null)
                   try {
-                    const r = await fetch('http://localhost:8000/email/send-fnb-summary', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
+                    const r = await fetch(`${import.meta.env.VITE_API_URL}/email/send-fnb-summary`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recipients: emails, tournament_meta: tournament || {} }) })
                     const d = await r.json()
                     setFnbResult({ ok: d.success, message: d.message })
                     if (d.success) setTimeout(() => setFnbModal(false), 2000)
