@@ -67,6 +67,11 @@ app.include_router(tournaments_router)
 app.include_router(register_router)
 
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
 @app.get("/")
 async def root():
     return {"status": "ok"}
