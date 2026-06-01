@@ -5,6 +5,54 @@ import { tournamentState as initial } from '../data/tournament'
 import Icon from '../components/Icon'
 import Modal from '../components/Modal'
 
+// Opening assistant message — reused when starting fresh / clearing the chat.
+const GREETING = {
+  role: 'assistant',
+  content: "Hi! I can help you plan your golf tournament. Tell me about your event — what's the tournament name and when is it?",
+}
+
+// In-progress plans are stashed in localStorage so navigating away briefly
+// (or an accidental refresh) doesn't lose the conversation. Drafts older than
+// the TTL are discarded on load so stale plans don't resurface much later.
+const DRAFT_STORAGE_KEY = 'planTournamentDraft'
+const DRAFT_TTL_MS = 30 * 60 * 1000 // 30 minutes
+
+// crypto.randomUUID() only exists in a secure context (HTTPS or localhost).
+// The app is deployed over plain HTTP, where it's undefined and throws — so we
+// fall back to getRandomValues, then Math.random, to always produce an id.
+function generateId() {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const bytes = crypto.getRandomValues(new Uint8Array(16))
+    bytes[6] = (bytes[6] & 0x0f) | 0x40 // version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80 // variant
+    const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0'))
+    return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10, 16).join('')}`
+  }
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+// Read a saved in-progress plan, or null if there isn't a fresh one.
+function loadDraft() {
+  try {
+    const raw = localStorage.getItem(DRAFT_STORAGE_KEY)
+    if (!raw) return null
+    const draft = JSON.parse(raw)
+    if (!draft || typeof draft.savedAt !== 'number' || !Array.isArray(draft.messages)) {
+      return null
+    }
+    if (Date.now() - draft.savedAt > DRAFT_TTL_MS) {
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+      return null
+    }
+    return draft
+  } catch {
+    return null
+  }
+}
+
 const STATUS_ROWS = [
   { key: 'name',                 label: 'Tournament Name',    required: true,                        fmt: v => v },
   { key: 'date',                 label: 'Start Date',         required: true,                        fmt: v => v },
@@ -268,22 +316,19 @@ export default function PlanTournament() {
   const navigate = useNavigate()
   const { authHeaders } = useAuth()
   const messagesContainerRef = useRef(null)
-  const [tournament, setTournament] = useState(initial)
-  const [messages, setMessages] = useState([
-    {
-      role: 'assistant',
-      content: "Hi! I can help you plan your golf tournament. Tell me about your event — what's the tournament name and when is it?",
-    },
-  ])
+  // Restore an in-progress plan if one was saved recently (see loadDraft / DRAFT_TTL_MS).
+  const [draft] = useState(loadDraft)
+  const [tournament, setTournament] = useState(() => draft?.tournament ?? initial)
+  const [messages, setMessages] = useState(() => draft?.messages ?? [GREETING])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [phase, setPhase] = useState('planning')
-  const [readyForGeneration, setReadyForGeneration] = useState(false)
-  const [generationDone, setGenerationDone] = useState(false)
+  const [phase, setPhase] = useState(() => draft?.phase ?? 'planning')
+  const [readyForGeneration, setReadyForGeneration] = useState(() => draft?.readyForGeneration ?? false)
+  const [generationDone, setGenerationDone] = useState(() => draft?.generationDone ?? false)
   const [generating, setGenerating] = useState(false)
-  const [savedReservationId, setSavedReservationId] = useState(null)
-  const [workingMemory, setWorkingMemory] = useState({})
+  const [savedReservationId, setSavedReservationId] = useState(() => draft?.savedReservationId ?? null)
+  const [workingMemory, setWorkingMemory] = useState(() => draft?.workingMemory ?? {})
   const [activeSource, setActiveSource] = useState(null)
   const [activeSourceContent, setActiveSourceContent] = useState('')
   const [activeSourceLoading, setActiveSourceLoading] = useState(false)
@@ -365,6 +410,51 @@ export default function PlanTournament() {
     }
   }, [input])
 
+  // Persist the in-progress plan so a brief navigation away (or refresh) keeps
+  // the conversation. The stamped time lets loadDraft() expire stale drafts.
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          savedAt: Date.now(),
+          tournament,
+          messages,
+          phase,
+          readyForGeneration,
+          generationDone,
+          savedReservationId,
+          workingMemory,
+        }),
+      )
+    } catch {
+      /* ignore storage quota / serialization errors */
+    }
+  }, [tournament, messages, phase, readyForGeneration, generationDone, savedReservationId, workingMemory])
+
+  // Reset the conversation to a clean slate and drop any saved draft.
+  function clearChat() {
+    if (!window.confirm('Clear this conversation and start a new plan? This cannot be undone.')) {
+      return
+    }
+    try {
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    } catch {
+      /* ignore */
+    }
+    setTournament(initial)
+    setMessages([GREETING])
+    setInput('')
+    setError('')
+    setPhase('planning')
+    setReadyForGeneration(false)
+    setGenerationDone(false)
+    setGenerating(false)
+    setSavedReservationId(null)
+    setWorkingMemory({})
+    setActiveSource(null)
+  }
+
   useEffect(() => {
     let cancelled = false
 
@@ -427,7 +517,7 @@ export default function PlanTournament() {
   }
 
   async function saveToReservations(currentTournament, genData, existingId) {
-    const resId = existingId || crypto.randomUUID()
+    const resId = existingId || generateId()
     let tournament_id = null
     let registration_token = ''
     try {
@@ -471,37 +561,48 @@ export default function PlanTournament() {
 
   async function handleGenerate() {
     setGenerating(true)
-    const isFirst = !generationDone
-    const genData = await callGenerate(tournament)
-    if (!genData) {
+    setError('')
+    try {
+      const isFirst = !generationDone
+      const genData = await callGenerate(tournament)
+      if (!genData) {
+        setError('Generation failed — is the backend running?')
+        return
+      }
+      const resId = await saveToReservations(tournament, genData, isFirst ? null : savedReservationId)
+      if (isFirst) {
+        setSavedReservationId(resId)
+        setGenerationDone(true)
+        setPhase('refinement')
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content:
+              "Your tournament has been saved to Reservations. You can view all documents there, send invites, and manage the event.\n\nYou can still chat here to make any changes — just tell me what you'd like to adjust.",
+          },
+        ])
+      } else {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: 'assistant',
+            content: 'Your tournament has been updated in Reservations.',
+          },
+        ])
+      }
+      // Tournament is saved — drop the in-progress draft so a later visit starts fresh.
+      try {
+        localStorage.removeItem(DRAFT_STORAGE_KEY)
+      } catch {
+        /* ignore */
+      }
+      navigate('/reservations')
+    } catch {
+      setError('Something went wrong while saving your tournament — please try again.')
+    } finally {
       setGenerating(false)
-      setError('Generation failed — is the backend running?')
-      return
     }
-    const resId = await saveToReservations(tournament, genData, isFirst ? null : savedReservationId)
-    setGenerating(false)
-    if (isFirst) {
-      setSavedReservationId(resId)
-      setGenerationDone(true)
-      setPhase('refinement')
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content:
-            "Your tournament has been saved to Reservations. You can view all documents there, send invites, and manage the event.\n\nYou can still chat here to make any changes — just tell me what you'd like to adjust.",
-        },
-      ])
-    } else {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          content: 'Your tournament has been updated in Reservations.',
-        },
-      ])
-    }
-    navigate('/reservations')
   }
 
   async function sendMessage(e) {
@@ -595,7 +696,18 @@ export default function PlanTournament() {
             <div className="card-title">
               <Icon name="sparkle" size={18} style={{ color: 'var(--champagne-dark)' }} /> Planning Assistant
             </div>
-            {phase === 'refinement' && <span className="badge badge-gold">Refinement mode</span>}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' }}>
+              {phase === 'refinement' && <span className="badge badge-gold">Refinement mode</span>}
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={clearChat}
+                disabled={loading || generating}
+                title="Clear the conversation and start a new plan"
+              >
+                <Icon name="trash" size={14} /> Clear chat
+              </button>
+            </div>
           </div>
 
           <div style={{ padding: 18 }}>
