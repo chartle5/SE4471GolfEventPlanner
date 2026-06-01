@@ -1,0 +1,11 @@
+# Keep the build context small and never bake secrets/venv into the image.
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.env
+.env.*
+!.env.example
+railpack.json
