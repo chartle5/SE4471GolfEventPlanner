@@ -366,13 +366,10 @@ def _build_index_sync() -> None:
 
     try:
         model = _load_model()
-        raw = model.encode(
-            [chunk.text for chunk in chunks],
-            normalize_embeddings=True,
-            convert_to_numpy=True,
-            show_progress_bar=False,
-        )
-        embeddings: List[List[float]] = raw.tolist()
+        # fastembed.embed() returns a generator of numpy arrays (already L2-normalised)
+        embeddings: List[List[float]] = [
+            emb.tolist() for emb in model.embed([chunk.text for chunk in chunks])
+        ]
     except Exception as exc:
         _CHUNK_INDEX = []
         _INDEX_READY = False
