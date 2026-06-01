@@ -6,6 +6,8 @@ node_modules/
 */.env*
 .env
 .env.*
+# ...but keep the committed template.
+!backend/.env.example
 
 # Python
 */app/__pycache__*

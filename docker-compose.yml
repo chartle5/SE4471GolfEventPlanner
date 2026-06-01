@@ -1,0 +1,47 @@
+# Golf Planner — temporary deployment alongside an existing app.
+# External ports 5000/5001 are chosen to avoid 3000 and 4000 (already in use).
+# The host nginx reverse proxy fronts these (see README-DEPLOY.md).
+
+services:
+  backend:
+    build: ./backend
+    # Internal 8000 (uvicorn) -> external 5000 on the host.
+    ports:
+      - "5000:8000"
+    # All backend secrets/config are injected from backend/.env (created from
+    # .env.example). This passes the app's required vars to the container using
+    # the EXACT names the code reads:
+    #   CLAUDE_API_KEY, MONGODB_URL, MONGODB_DB_NAME, JWT_SECRET, JWT_ALGORITHM,
+    #   JWT_EXPIRE_MINUTES, FRONTEND_URL, SMTP_HOST/PORT/USERNAME/PASSWORD/
+    #   FROM_EMAIL/FROM_NAME.
+    # (env_file is used instead of `environment: ${VAR}` interpolation so a var
+    #  missing from the host shell can't silently override .env with an empty
+    #  string.)
+    env_file:
+      - ./backend/.env
+    environment:
+      # Port uvicorn binds to inside the container. Set here so it's authoritative
+      # regardless of .env.
+      PORT: 8000
+    restart: unless-stopped
+    networks:
+      - golf-net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Baked into the bundle at build time — point at the public API host.
+        VITE_API_URL: http://5.78.223.61:5000
+    # Internal 80 (nginx) -> external 5001 on the host.
+    ports:
+      - "5001:80"
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - golf-net
+
+networks:
+  golf-net:
+    driver: bridge
