@@ -13,6 +13,7 @@ export const tournamentState = {
   description: '',      // optional
   teeTimeStart: '08:00',
   teeTimeInterval: 12,
+  teeGroupSize: 4,      // players per tee-time slot (2 or 4)
   sponsors: [],
   catering: '',
   budget: 0,

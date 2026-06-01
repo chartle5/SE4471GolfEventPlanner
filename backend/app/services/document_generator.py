@@ -16,12 +16,21 @@ def _parse_tee_time(time_str: str) -> datetime:
 def generate_schedule(tournament: Dict[str, Any]) -> List[Dict[str, Any]]:
     """
     Build a tee-time schedule from the tournament object.
-    Players are placeholder names (Player 1 … N), grouped in fours.
+    Players are placeholder names (Player 1 … N), grouped by the tournament's
+    tee group size (2 or 4 players per slot; defaults to 4).
     Returns a list of group dicts: {group, teeTime, players}.
     """
     player_count = max(int(tournament.get("playerCount", 0)), 1)
     interval = int(tournament.get("teeTimeInterval", 12))
     tee_start_str = tournament.get("teeTimeStart", "08:00") or "08:00"
+
+    # Players per tee-time slot — only 2 or 4 are valid; anything else means 4.
+    try:
+        group_size = int(tournament.get("teeGroupSize", 4) or 4)
+    except (TypeError, ValueError):
+        group_size = 4
+    if group_size not in (2, 4):
+        group_size = 4
 
     tee_start = _parse_tee_time(tee_start_str)
 
@@ -31,7 +40,7 @@ def generate_schedule(tournament: Dict[str, Any]) -> List[Dict[str, Any]]:
     group_num = 1
     idx = 0
     while idx < len(players):
-        group_players = players[idx: idx + 4]
+        group_players = players[idx: idx + group_size]
         tee_time = tee_start + timedelta(minutes=interval * (group_num - 1))
         groups.append(
             {
@@ -40,7 +49,7 @@ def generate_schedule(tournament: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "players": group_players,
             }
         )
-        idx += 4
+        idx += group_size
         group_num += 1
 
     return groups

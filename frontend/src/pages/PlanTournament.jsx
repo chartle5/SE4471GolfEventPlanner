@@ -64,6 +64,7 @@ const STATUS_ROWS = [
   { key: 'registrationDeadline', label: 'Reg. Deadline',      required: true,                        fmt: v => v },
   { key: 'teeTimeStart',         label: 'First Tee Time',     required: true,                        fmt: v => v },
   { key: 'teeTimeInterval',      label: 'Tee Interval (min)', required: true,                        fmt: v => `${v} min` },
+  { key: 'teeGroupSize',         label: 'Tee Group Size',     required: true,                        fmt: v => `${v} per slot` },
   { key: 'entryFee',             label: 'Entry Fee',          required: false,                       fmt: v => v ? `$${v}` : '—' },
   { key: 'description',          label: 'Description',        required: false,                       fmt: v => v || '—' },
   { key: 'sponsors',             label: 'Sponsors',           required: false,                       fmt: v => Array.isArray(v) ? v.join(', ') || '—' : (v || '—') },

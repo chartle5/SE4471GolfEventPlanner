@@ -53,6 +53,9 @@ async def create_tournament(
         "description": tournament_data.get("description", ""),
         "tee_time_start": tournament_data.get("teeTimeStart", "08:00"),
         "tee_time_interval": int(tournament_data.get("teeTimeInterval", 12)),
+        "tee_group_size": int(tournament_data.get("teeGroupSize", 4) or 4)
+        if int(tournament_data.get("teeGroupSize", 4) or 4) in (2, 4)
+        else 4,
         "schedule": schedule,
         "brochure_subject": brochure.get("subject", ""),
         "brochure_body": brochure.get("body", ""),
@@ -171,6 +174,17 @@ async def reorder_schedule(
     new_players = Counter(p for g in new_schedule for p in g["players"])
     if current_players != new_players:
         raise ValueError("Reordered schedule must contain exactly the same players.")
+
+    # Each tee group must keep its original size — players may be swapped between
+    # groups, but a group can't end up over or under its tee-time slot capacity.
+    current_size_by_group = {int(g["group"]): len(g["players"]) for g in current}
+    for group in new_schedule:
+        gid = int(group["group"])
+        if len(group["players"]) != current_size_by_group.get(gid):
+            raise ValueError(
+                "Each tee group must keep the same number of players — "
+                "swap players between groups instead of moving them."
+            )
 
     # Server-side enforcement of the "teams stay together" rule: every player on
     # the same registered team must land in a single tee group.

@@ -43,6 +43,7 @@ export default function ScheduleEditor({ schedule, teamMap, onSave, saving }) {
   const [containers, setContainers] = useState(seed.containers)
   const [dirty, setDirty] = useState(false)
   const [activeId, setActiveId] = useState(null)
+  const [warning, setWarning] = useState('')
   const lastSignature = useRef(signature)
 
   // Re-seed from props when the upstream schedule changes and we have no
@@ -70,51 +71,66 @@ export default function ScheduleEditor({ schedule, teamMap, onSave, saving }) {
 
   function handleDragStart(event) {
     setActiveId(event.active.id)
+    setWarning('')
   }
 
-  function handleDragOver(event) {
-    const { active, over } = event
-    if (!over) return
-    const activeContainer = findContainer(active.id)
-    const overContainer = findContainer(over.id) || (over.id in containers ? over.id : null)
-    if (!activeContainer || !overContainer || activeContainer === overContainer) return
-
-    setContainers(prev => {
-      const activeItems = prev[activeContainer]
-      const overItems = prev[overContainer]
-      const activeIndex = activeItems.indexOf(active.id)
-      let newIndex = overItems.indexOf(over.id)
-      if (newIndex === -1) newIndex = overItems.length
-      return {
-        ...prev,
-        [activeContainer]: activeItems.filter(id => id !== active.id),
-        [overContainer]: [
-          ...overItems.slice(0, newIndex),
-          active.id,
-          ...overItems.slice(newIndex),
-        ],
-      }
-    })
-    setDirty(true)
-  }
-
+  // Cross-group moves are swaps, not transfers: dropping unit A onto unit B in a
+  // different group exchanges their slots, so every tee group keeps its size. A
+  // swap is only valid when both units hold the same number of players (e.g. two
+  // singles, or two pairs); otherwise the group sizes would change, so we reject
+  // it and tell the user to swap with a matching player/team instead.
   function handleDragEnd(event) {
     const { active, over } = event
     setActiveId(null)
     if (!over) return
+
     const activeContainer = findContainer(active.id)
-    const overContainer = findContainer(over.id) || (over.id in containers ? over.id : null)
+    const overIsContainer = over.id in containers
+    const overContainer = overIsContainer ? over.id : findContainer(over.id)
     if (!activeContainer || !overContainer) return
 
+    // Reordering within the same tee group is always fine.
     if (activeContainer === overContainer) {
       const items = containers[activeContainer]
       const oldIndex = items.indexOf(active.id)
-      const newIndex = items.indexOf(over.id)
+      const newIndex = overIsContainer ? items.length - 1 : items.indexOf(over.id)
       if (oldIndex !== newIndex && newIndex !== -1) {
-        setContainers(prev => ({ ...prev, [activeContainer]: arrayMove(items, oldIndex, newIndex) }))
+        setContainers(prev => ({ ...prev, [activeContainer]: arrayMove(prev[activeContainer], oldIndex, newIndex) }))
         setDirty(true)
+        setWarning('')
       }
+      return
     }
+
+    // Cross-group: must be dropped directly onto a unit to swap with.
+    if (overIsContainer) {
+      setWarning('To move someone to another tee time, drop them directly onto a player or team to swap places — groups must stay the same size.')
+      return
+    }
+
+    const dragged = unitsById[active.id]
+    const target = unitsById[over.id]
+    if (!dragged || !target) return
+
+    if (dragged.players.length !== target.players.length) {
+      const fmt = (n) => `${n} player${n === 1 ? '' : 's'}`
+      setWarning(`Can't swap ${fmt(dragged.players.length)} with ${fmt(target.players.length)} — that would change the tee group sizes. Swap with a player or team of the same size instead.`)
+      return
+    }
+
+    // Equal-size swap: exchange the two units between their groups.
+    setContainers(prev => {
+      const fromItems = [...prev[activeContainer]]
+      const toItems = [...prev[overContainer]]
+      const fromIdx = fromItems.indexOf(active.id)
+      const toIdx = toItems.indexOf(over.id)
+      if (fromIdx === -1 || toIdx === -1) return prev
+      fromItems[fromIdx] = over.id
+      toItems[toIdx] = active.id
+      return { ...prev, [activeContainer]: fromItems, [overContainer]: toItems }
+    })
+    setDirty(true)
+    setWarning('')
   }
 
   function buildSchedule() {
@@ -128,6 +144,7 @@ export default function ScheduleEditor({ schedule, teamMap, onSave, saving }) {
   function handleReset() {
     setContainers(seed.containers)
     setDirty(false)
+    setWarning('')
     lastSignature.current = signature
   }
 
@@ -143,16 +160,24 @@ export default function ScheduleEditor({ schedule, teamMap, onSave, saving }) {
       <div className="notice notice-info" style={{ margin: '0 22px 16px' }}>
         <Icon name="users" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
         <span>
-          Drag players between tee groups to rearrange pairings. Teammates are
-          locked together (gold blocks) and always move as one.
+          Reorder within a tee group freely. To move someone to a different tee
+          time, drop them onto a player or team of the same size to swap places —
+          this keeps every group at its set size. Teammates are locked together
+          (gold blocks) and always move as one.
         </span>
       </div>
+
+      {warning && (
+        <div className="notice notice-warn" style={{ margin: '0 22px 16px' }}>
+          <Icon name="users" size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{warning}</span>
+        </div>
+      )}
 
       <DndContext
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
         <div style={{

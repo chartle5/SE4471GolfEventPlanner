@@ -39,6 +39,7 @@ READY_MESSAGE = (
 DOCUMENT_IMPACT_FIELDS = {
     "teeTimeStart",
     "teeTimeInterval",
+    "teeGroupSize",
     "playerCount",
     "format",
     "date",
@@ -78,6 +79,7 @@ class TournamentState(BaseModel):
     description: str = ""
     teeTimeStart: str = "08:00"
     teeTimeInterval: int = 12
+    teeGroupSize: int = 4
     sponsors: List[str] = Field(default_factory=list)
     catering: str = ""
     budget: int = 0
@@ -173,6 +175,16 @@ REQUIRED FIELDS — you must collect ALL of these before generation can begin:
   9.  registrationDeadline — final date by which players must register (must be before the event date)
   10. teeTimeStart         — first tee time (HH:MM 24-hour, default 08:00 but ASK the user)
   11. teeTimeInterval      — minutes between consecutive tee times (default 12, user can override)
+  12. teeGroupSize         — players per tee-time slot/group: must be either 2 or 4 (default 4, ASK the user)
+
+TEE GROUP SIZE — teeGroupSize is how many players share each tee-time slot (2 or 4).
+- This is DIFFERENT from teamSize. teamSize is how many players form a competing team;
+  teeGroupSize is how many players tee off together in one slot.
+- Valid values are exactly 2 or 4. If the user says "twosomes"/"pairs" use 2; if they say
+  "foursomes"/"groups of four" use 4. Default to 4 if the user has no preference.
+- For team events, teeGroupSize must be able to hold whole teams without splitting them, so
+  it should be a multiple of teamSize (e.g., teamSize 2 → group of 2 or 4; teamSize 4 → group
+  of 4). If the user picks a group size that can't fit whole teams, explain and suggest 4.
 
 VENUE — the venue should be a real golf course or club:
 - Rely on your own knowledge of real-world golf courses and clubs. If the name the user
@@ -390,6 +402,7 @@ EXAMPLE_EMPTY_TOURNAMENT = {
     "description": "",
     "teeTimeStart": "08:00",
     "teeTimeInterval": 12,
+    "teeGroupSize": 4,
     "sponsors": [],
     "catering": "",
     "budget": 0,
@@ -473,12 +486,17 @@ def _normalize_tournament(tournament: Dict[str, Any]) -> Dict[str, Any]:
         ("teamSize", 0),
         ("entryFee", 0),
         ("teeTimeInterval", 12),
+        ("teeGroupSize", 4),
         ("budget", 0),
     ):
         try:
             merged[int_field] = int(merged.get(int_field) or default)
         except (TypeError, ValueError):
             merged[int_field] = default
+
+    # Tee-time slots hold either 2 or 4 players; anything else falls back to 4.
+    if merged["teeGroupSize"] not in (2, 4):
+        merged["teeGroupSize"] = 4
 
     for text_field in (
         "id",
@@ -757,6 +775,7 @@ def _summarize_tournament_state(tournament: Dict[str, Any]) -> str:
         "registrationDeadline",
         "teeTimeStart",
         "teeTimeInterval",
+        "teeGroupSize",
     ):
         value = tournament.get(field)
         if value in ("", 0, None):
@@ -814,6 +833,7 @@ def _human_field_label(field: str) -> str:
         "registrationDeadline": "registration deadline",
         "teeTimeStart": "first tee time",
         "teeTimeInterval": "tee time interval",
+        "teeGroupSize": "tee group size",
     }
     return labels.get(field, field)
 
@@ -842,6 +862,8 @@ def _format_changed_field_statement(field: str, change: Dict[str, Any]) -> str:
         return f"set the first tee time to {after}"
     if field == "teeTimeInterval":
         return f"set the tee time interval to {after} minutes"
+    if field == "teeGroupSize":
+        return f"set the tee group size to {after} players per slot"
     return f"updated {field} to {after}"
 
 
@@ -1996,6 +2018,7 @@ def _default_clarifying_question(
         "registrationDeadline": "What registration deadline should I use?",
         "teeTimeStart": "What time should the first tee time start?",
         "teeTimeInterval": "How many minutes should there be between tee times?",
+        "teeGroupSize": "How many players should share each tee-time slot — groups of 2 or 4?",
     }
 
     if focus in question_map:
