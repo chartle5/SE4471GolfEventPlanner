@@ -1,6 +1,9 @@
 # Golf Planner — FastAPI backend
-# Base image per spec.
-FROM python:3.11-slim
+# Python 3.12 is REQUIRED: app/services/document_generator.py uses f-strings with
+# backslash escapes inside the expression parts (PEP 701), which only parse on
+# 3.12+. The local dev venv is 3.12.11. (3.11-slim fails at import with
+# "SyntaxError: f-string expression part cannot include a backslash".)
+FROM python:3.12-slim
 
 # Faster, cleaner Python in containers.
 ENV PYTHONUNBUFFERED=1 \
