@@ -11,15 +11,17 @@ from typing import TYPE_CHECKING, Any, Dict, List, Sequence
 from app.data.knowledge_documents import KNOWLEDGE_DOCUMENTS
 
 if TYPE_CHECKING:
-    from sentence_transformers import SentenceTransformer
+    from fastembed import TextEmbedding
 
 DEFAULT_CHUNK_WORD_SIZE = int(os.getenv("RAG_CHUNK_WORD_SIZE", "120"))
 DEFAULT_CHUNK_WORD_OVERLAP = int(os.getenv("RAG_CHUNK_WORD_OVERLAP", "30"))
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "3"))
 LOCAL_EMBEDDING_MODEL = os.getenv(
     "RAG_LOCAL_EMBEDDING_MODEL",
-    "sentence-transformers/all-MiniLM-L6-v2",
+    "BAAI/bge-small-en-v1.5",
 )
+# Set DISABLE_RAG=true to skip model loading entirely (useful on memory-limited hosts).
+DISABLE_RAG: bool = os.getenv("DISABLE_RAG", "").lower() in ("1", "true", "yes")
 CORPUS_DIR = Path(
     os.getenv(
         "RAG_CORPUS_DIR",
@@ -229,18 +231,18 @@ def _cosine_similarity(left: Sequence[float], right: Sequence[float]) -> float:
     return numerator / (math.sqrt(left_norm) * math.sqrt(right_norm))
 
 
-def _load_model() -> "SentenceTransformer":
+def _load_model() -> "TextEmbedding":
     global _EMBEDDING_MODEL
 
     if _EMBEDDING_MODEL is None:
-        from sentence_transformers import SentenceTransformer
+        from fastembed import TextEmbedding
 
-        _EMBEDDING_MODEL = SentenceTransformer(LOCAL_EMBEDDING_MODEL)
+        _EMBEDDING_MODEL = TextEmbedding(LOCAL_EMBEDDING_MODEL)
 
     return _EMBEDDING_MODEL
 
 
-async def _get_model() -> "SentenceTransformer":
+async def _get_model() -> "TextEmbedding":
     if _EMBEDDING_MODEL is not None:
         return _EMBEDDING_MODEL
 
@@ -252,13 +254,8 @@ async def _get_model() -> "SentenceTransformer":
 
 def _encode_texts_sync(texts: Sequence[str]) -> List[List[float]]:
     model = _load_model()
-    embeddings = model.encode(
-        list(texts),
-        normalize_embeddings=True,
-        convert_to_numpy=True,
-        show_progress_bar=False,
-    )
-    return embeddings.tolist()
+    # fastembed.embed() returns a generator of numpy arrays (already L2-normalised)
+    return [emb.tolist() for emb in model.embed(list(texts))]
 
 
 async def _embed_texts(texts: Sequence[str]) -> List[List[float]]:
@@ -423,6 +420,11 @@ async def ensure_rag_index() -> None:
 
 
 async def warm_rag_index() -> None:
+    if DISABLE_RAG:
+        logger.info("RAG warmup skipped: DISABLE_RAG is set.")
+        _update_rag_status(state="disabled", ready=False)
+        return
+
     if _INDEX_READY:
         _update_rag_status(state="ready", ready=True)
         return
@@ -451,8 +453,11 @@ async def retrieve_relevant_chunks(
     if not query.strip():
         return []
 
-    if not _INDEX_READY:
-        logger.warning("RAG index is not ready yet; skipping retrieval for this query.")
+    if DISABLE_RAG or not _INDEX_READY:
+        if DISABLE_RAG:
+            logger.debug("RAG retrieval skipped: DISABLE_RAG is set.")
+        else:
+            logger.warning("RAG index is not ready yet; skipping retrieval for this query.")
         return []
 
     query_embedding = (await asyncio.to_thread(_encode_texts_sync, [query.strip()]))[0]
