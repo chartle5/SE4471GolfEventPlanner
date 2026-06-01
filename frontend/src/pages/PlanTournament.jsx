@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { tournamentState as initial } from '../data/tournament'
 import Icon from '../components/Icon'
-import Modal from '../components/Modal'
 
 // Opening assistant message — reused when starting fresh / clearing the chat.
 const GREETING = {
@@ -88,162 +87,9 @@ function isFilled(key, tournament) {
   return !!v
 }
 
-function getRagIndicator(status) {
-  const docCount = Number(status?.document_count || 0)
-  const chunkCount = Number(status?.chunk_count || 0)
-  const sourceLabel = status?.source_kind === 'bundled' ? 'bundled library' : 'corpus'
-
-  if (status?.state === 'ready' && status?.ready) {
-    return {
-      label: 'Planning Library Ready',
-      background: '#dcfce7',
-      border: '#86efac',
-      color: '#166534',
-      detail: `${docCount} docs indexed into ${chunkCount} chunks from the ${sourceLabel}.`,
-    }
-  }
-
-  if (status?.state === 'building') {
-    return {
-      label: 'Planning Library Indexing…',
-      background: '#fef3c7',
-      border: '#fcd34d',
-      color: '#92400e',
-      detail: docCount > 0
-        ? `Preparing embeddings for ${docCount} docs so retrieval is ready before your first planning-heavy turn.`
-        : 'Preparing the retrieval index in the background.',
-    }
-  }
-
-  if (status?.state === 'error') {
-    return {
-      label: 'Planning Library Unavailable',
-      background: '#fee2e2',
-      border: '#fca5a5',
-      color: '#991b1b',
-      detail: status?.last_error || 'The backend could not finish the retrieval warmup.',
-    }
-  }
-
-  return {
-    label: 'Planning Library Starting…',
-    background: '#e0f2fe',
-    border: '#7dd3fc',
-    color: '#075985',
-    detail: 'Waiting for the backend to begin indexing the planning corpus.',
-  }
-}
-
-function getSourceContent(source) {
-  return (source.content || source.preview || 'No source text available.').trim()
-}
-
-function formatSourceLabel(source) {
-  if (typeof source.score === 'number') {
-    return `${source.title} · ${source.score.toFixed(3)}`
-  }
-  return source.title
-}
-
-function escapeHtml(value) {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;')
-}
-
-function openSourceInNewTab(source) {
-  const content = escapeHtml(getSourceContent(source))
-  const title = escapeHtml(source.title || 'Source Viewer')
-  const chunkId = escapeHtml(source.chunk_id || 'n/a')
-  const score = typeof source.score === 'number' ? source.score.toFixed(3) : 'n/a'
-  const newWindow = window.open('', '_blank', 'noopener,noreferrer')
-
-  if (!newWindow) return
-
-  newWindow.document.write(`<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <title>${title}</title>
-    <style>
-      body {
-        margin: 0;
-        padding: 24px;
-        font-family: Georgia, "Times New Roman", serif;
-        background: #f8fafc;
-        color: #0f172a;
-      }
-      .meta {
-        margin-bottom: 16px;
-        font: 600 13px/1.5 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: #475569;
-      }
-      .chunk {
-        background: white;
-        border: 1px solid #cbd5e1;
-        border-radius: 12px;
-        padding: 20px;
-        white-space: pre-wrap;
-        line-height: 1.6;
-        font-size: 16px;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>${title}</h1>
-    <div class="meta">Chunk: ${chunkId} | Similarity: ${score}</div>
-    <div class="chunk">${content}</div>
-  </body>
-</html>`)
-  newWindow.document.close()
-}
-
-function shouldFetchFullChunk(source) {
-  if (!source?.chunk_id) return false
-  if (source.chunk_id.startsWith('weather_')) return false
-  return true
-}
-
-function SourceViewerModal({ source, resolvedContent, loading, error, onClose }) {
-  if (!source) return null
-
-  const modalContent = (resolvedContent || getSourceContent(source)).trim()
-
-  return (
-    <Modal
-      title={source.title}
-      subtitle={`Chunk: ${source.chunk_id || 'n/a'}${typeof source.score === 'number' ? ` · Similarity ${source.score.toFixed(3)}` : ''}`}
-      onClose={onClose}
-      maxWidth={860}
-      footer={
-        <>
-          <button type="button" className="btn btn-ghost btn-sm" onClick={() => openSourceInNewTab({ ...source, content: modalContent })}>
-            <Icon name="external" size={15} /> Open in New Tab
-          </button>
-          <button type="button" className="btn btn-primary btn-sm" onClick={onClose}>Close</button>
-        </>
-      }
-    >
-      <div style={{
-        whiteSpace: 'pre-wrap',
-        lineHeight: 1.7,
-        fontSize: 15,
-        color: 'var(--slate)',
-        fontFamily: 'var(--font-serif)',
-      }}>
-        {loading ? 'Loading full chunk…' : error ? error : modalContent}
-      </div>
-    </Modal>
-  )
-}
-
-function LiveStatusPanel({ tournament, readyForGeneration, generationDone, generating, onGenerate, ragStatus }) {
+function LiveStatusPanel({ tournament, readyForGeneration, generationDone, generating, onGenerate }) {
   const requiredFilled = STATUS_ROWS.filter(r => isRequired(r, tournament) && isFilled(r.key, tournament)).length
   const totalRequired = STATUS_ROWS.filter(r => isRequired(r, tournament)).length
-  const ragIndicator = getRagIndicator(ragStatus)
 
   const pct = totalRequired > 0 ? Math.round((requiredFilled / totalRequired) * 100) : 0
 
@@ -262,21 +108,6 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
       </div>
 
       <div style={{ padding: '14px 18px' }}>
-        <div style={{
-          marginBottom: 14,
-          padding: '10px 12px',
-          borderRadius: 'var(--r-sm)',
-          background: ragIndicator.background,
-          border: `1px solid ${ragIndicator.border}`,
-        }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: ragIndicator.color }}>
-            {ragIndicator.label}
-          </div>
-          <div style={{ fontSize: 11.5, color: 'var(--slate)', marginTop: 4, lineHeight: 1.4 }}>
-            {ragIndicator.detail}
-          </div>
-        </div>
-
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <tbody>
             {STATUS_ROWS.map(row => {
@@ -329,72 +160,6 @@ export default function PlanTournament() {
   const [generating, setGenerating] = useState(false)
   const [savedReservationId, setSavedReservationId] = useState(() => draft?.savedReservationId ?? null)
   const [workingMemory, setWorkingMemory] = useState(() => draft?.workingMemory ?? {})
-  const [activeSource, setActiveSource] = useState(null)
-  const [activeSourceContent, setActiveSourceContent] = useState('')
-  const [activeSourceLoading, setActiveSourceLoading] = useState(false)
-  const [activeSourceError, setActiveSourceError] = useState('')
-  const [ragStatus, setRagStatus] = useState({
-    state: 'idle',
-    ready: false,
-    document_count: 0,
-    chunk_count: 0,
-    last_error: '',
-    source_kind: 'unknown',
-  })
-
-  useEffect(() => {
-    let cancelled = false
-    let timerId = null
-
-    async function pollRagStatus() {
-      let nextDelay = 5000
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/rag/status`)
-        if (!response.ok) {
-          throw new Error(`Status ${response.status}`)
-        }
-
-        const data = await response.json()
-        if (cancelled) return
-
-        setRagStatus(data)
-        nextDelay = data.ready ? 30000 : 2000
-      } catch {
-        if (cancelled) return
-
-        setRagStatus((prev) => ({
-          ...prev,
-          state: 'error',
-          ready: false,
-          last_error: 'Unable to reach the backend RAG status endpoint.',
-        }))
-      } finally {
-        if (!cancelled) {
-          timerId = window.setTimeout(pollRagStatus, nextDelay)
-        }
-      }
-    }
-
-    pollRagStatus()
-
-    return () => {
-      cancelled = true
-      if (timerId !== null) {
-        window.clearTimeout(timerId)
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    function handleEscape(event) {
-      if (event.key === 'Escape') {
-        setActiveSource(null)
-      }
-    }
-
-    window.addEventListener('keydown', handleEscape)
-    return () => window.removeEventListener('keydown', handleEscape)
-  }, [])
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
@@ -452,56 +217,7 @@ export default function PlanTournament() {
     setGenerating(false)
     setSavedReservationId(null)
     setWorkingMemory({})
-    setActiveSource(null)
   }
-
-  useEffect(() => {
-    let cancelled = false
-
-    async function loadFullChunk() {
-      if (!activeSource) {
-        setActiveSourceContent('')
-        setActiveSourceLoading(false)
-        setActiveSourceError('')
-        return
-      }
-
-      setActiveSourceContent(getSourceContent(activeSource))
-      setActiveSourceError('')
-
-      if (!shouldFetchFullChunk(activeSource)) {
-        setActiveSourceLoading(false)
-        return
-      }
-
-      setActiveSourceLoading(true)
-      try {
-        const response = await fetch(`${import.meta.env.VITE_API_URL}/rag/chunk/${encodeURIComponent(activeSource.chunk_id)}`)
-        if (!response.ok) {
-          throw new Error(`Status ${response.status}`)
-        }
-
-        const data = await response.json()
-        if (cancelled) return
-
-        setActiveSourceContent((data.text || '').trim() || getSourceContent(activeSource))
-      } catch {
-        if (cancelled) return
-
-        setActiveSourceError('Unable to load the full chunk from the backend.')
-      } finally {
-        if (!cancelled) {
-          setActiveSourceLoading(false)
-        }
-      }
-    }
-
-    loadFullChunk()
-
-    return () => {
-      cancelled = true
-    }
-  }, [activeSource])
 
   async function callGenerate(currentTournament) {
     try {
@@ -638,7 +354,6 @@ export default function PlanTournament() {
         {
           role: 'assistant',
           content: data.message || 'No response',
-          sources: data.sources || [],
         },
       ])
 
@@ -721,21 +436,6 @@ export default function PlanTournament() {
                   <div className={`bubble ${msg.role}`}>
                     <div className="bubble-meta">{msg.role === 'user' ? 'You' : 'Assistant'}</div>
                     <div>{msg.content}</div>
-                    {msg.sources?.length > 0 && (
-                      <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, fontWeight: 600, opacity: 0.7 }}>Sources:</span>
-                        {msg.sources.map((source, sourceIndex) => (
-                          <button
-                            key={`${source.chunk_id}-${sourceIndex}`}
-                            type="button"
-                            className="source-chip"
-                            onClick={() => setActiveSource(source)}
-                          >
-                            {formatSourceLabel(source)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
@@ -790,16 +490,8 @@ export default function PlanTournament() {
           generationDone={generationDone}
           generating={generating}
           onGenerate={handleGenerate}
-          ragStatus={ragStatus}
         />
       </div>
-      <SourceViewerModal
-        source={activeSource}
-        resolvedContent={activeSourceContent}
-        loading={activeSourceLoading}
-        error={activeSourceError}
-        onClose={() => setActiveSource(null)}
-      />
     </div>
   )
 }
