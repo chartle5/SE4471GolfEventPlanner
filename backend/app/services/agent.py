@@ -32,8 +32,9 @@ DEPLOYMENT = CHAT_DEPLOYMENT
 RAG_RETRIEVAL_TIMEOUT_SECONDS = float(os.getenv("RAG_RETRIEVAL_TIMEOUT_SECONDS", "8"))
 LLM_REQUEST_TIMEOUT_SECONDS = float(os.getenv("LLM_REQUEST_TIMEOUT_SECONDS", "20"))
 READY_MESSAGE = (
-    "Great — I have all the information I need. Click the green button on the "
-    "right to start generating your documents."
+    "Great — I have all the required information! Feel free to fill out any of the "
+    "additional optional fields on the right, and you can save your tournament using "
+    "the button in the bottom right whenever you're ready."
 )
 DOCUMENT_IMPACT_FIELDS = {
     "teeTimeStart",
@@ -344,14 +345,24 @@ Rules:
 - If responseMode is "live_data_reply", answer the live-data question directly and do
   not add an unrelated planning follow-up question.
 - If a live-data tool result is provided, use that data directly and do not guess.
-- If planning mode is ready for generation AND the user is NOT asking a general
-  question (is_general_question is false in the workflow analysis), the message must
-  be exactly: "Great — I have all the information I need. Click the green button on
-  the right to start generating your documents."
+- If planning mode just became ready for generation on THIS turn (the input shows
+  "Planning already complete before this turn: false") AND the user is NOT asking a
+  general question (is_general_question is false in the workflow analysis), the message
+  must be exactly: "Great — I have all the required information! Feel free to fill out
+  any of the additional optional fields on the right, and you can save your tournament
+  using the button in the bottom right whenever you're ready."
+- If planning was ALREADY complete before this turn (the input shows "Planning already
+  complete before this turn: true"), the user is now adding or adjusting OPTIONAL
+  details (e.g., entry fee, sponsors, description, catering, staffing, accessibility,
+  notes, budget). Respond naturally: acknowledge and confirm the specific optional
+  detail they just provided, and you may briefly remind them they can keep filling out
+  optional fields on the right and save the tournament from the button in the bottom
+  right whenever they're ready. Do NOT repeat the canned readiness message word-for-word.
 - If planning mode is ready for generation AND the user IS asking a general question
   (is_general_question is true), answer their question fully using retrieved knowledge
-  snippets, then end with a brief natural sentence such as "Whenever you're ready,
-  click the green button on the right to generate your documents."
+  snippets, then end with a brief natural sentence such as "All the required details
+  are set — feel free to add any optional fields on the right, and you can save your
+  tournament using the button in the bottom right whenever you're ready."
 - Use retrieved knowledge only as guidance.
 """
 
@@ -687,19 +698,18 @@ def _should_use_rag(
     user_message: str,
     tournament: Dict[str, Any],
     working_memory: Optional[Dict[str, Any]] = None,
+    phase: str = "planning",
 ) -> bool:
-    if _is_direct_field_update(user_message):
-        return False
-
-    if _is_general_reference_question(user_message):
-        return True
-
+    # Skip retrieval while we're resuming a pending live-data (weather/sun) request —
+    # that turn is about the tool result, not the local planning knowledge base.
     if working_memory:
         pending = (working_memory.get("pending_action") or {}).get("active")
         if pending:
             return False
 
-    return False
+    # Ground both planning and refinement turns in the local knowledge base so the
+    # assistant can draw on the tournament planning guides while collecting details.
+    return phase in {"planning", "refinement"}
 
 
 def _phase_instruction_block(phase: str) -> str:
@@ -1918,6 +1928,20 @@ def _collect_constraint_issues(tournament: Dict[str, Any]) -> List[Dict[str, str
     return issues
 
 
+def _is_planning_complete(tournament: Dict[str, Any]) -> bool:
+    """True when every required field is filled and no constraint is violated.
+
+    Used to tell apart the turn that *completes* planning (show the readiness
+    message) from later turns where the user is just filling in optional fields
+    (respond naturally instead of repeating the canned message).
+    """
+    if not all(_required_field_status(tournament).values()):
+        return False
+    if _collect_constraint_issues(tournament):
+        return False
+    return True
+
+
 def _document_impact_fields(
     original_tournament: Dict[str, Any],
     candidate_tournament: Dict[str, Any],
@@ -2075,6 +2099,9 @@ async def handle_chat(
     phase = "refinement" if phase == "refinement" else "planning"
     tournament = _normalize_tournament(tournament)
     working_memory = _normalize_working_memory(working_memory)
+    # Was planning already finished before this turn? If so, the user is now filling
+    # in optional fields and should get a natural reply, not the canned ready message.
+    planning_already_complete = phase == "planning" and _is_planning_complete(tournament)
     analysis_failed = False
     analysis_failure_error = ""
     _trace(
@@ -2086,7 +2113,7 @@ async def handle_chat(
         memory=_summarize_working_memory(working_memory),
     )
 
-    use_rag = _should_use_rag(user_message, tournament, working_memory)
+    use_rag = _should_use_rag(user_message, tournament, working_memory, phase)
     retrieval_query = _build_retrieval_query(user_message, tournament, working_memory)
     retrieved_chunks: List[Any] = []
     retrieval_error = None
@@ -2277,7 +2304,8 @@ async def handle_chat(
         f"Today's date: {today_str}\n"
         f"Final action: {validation_result['final_action']}\n"
         f"Target ready_for_generation: {str(validation_result['ready_for_generation']).lower()}\n"
-        f"Target needs_regeneration: {str(validation_result['needs_regeneration']).lower()}\n\n"
+        f"Target needs_regeneration: {str(validation_result['needs_regeneration']).lower()}\n"
+        f"Planning already complete before this turn: {str(planning_already_complete).lower()}\n\n"
         f"[Phase instructions]\n{phase_instructions}\n\n"
         f"{history_block}"
         f"[Latest user message]\n{user_message}\n\n"
@@ -2374,6 +2402,7 @@ async def handle_chat(
         and phase == "planning"
         and ready_for_generation
         and not analysis_result.get("is_general_question", False)
+        and not planning_already_complete
     ):
         final_message = READY_MESSAGE
 

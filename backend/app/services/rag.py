@@ -20,12 +20,29 @@ LOCAL_EMBEDDING_MODEL = os.getenv(
     "RAG_LOCAL_EMBEDDING_MODEL",
     "sentence-transformers/all-MiniLM-L6-v2",
 )
-CORPUS_DIR = Path(
-    os.getenv(
-        "RAG_CORPUS_DIR",
-        str(Path(__file__).resolve().parents[1] / "data" / "corpus"),
-    )
-)
+def _resolve_corpus_dir() -> Path:
+    """Locate the RAG corpus directory.
+
+    An explicit RAG_CORPUS_DIR env var always wins. Otherwise we look inside the
+    data directory for a corpus folder, matching the name case-insensitively. The
+    folder is committed as ``Corpus`` (capital C); macOS is case-insensitive so a
+    hard-coded ``corpus`` works locally, but the Linux container is case-sensitive
+    and would silently miss it, leaving RAG with no documents.
+    """
+    override = os.getenv("RAG_CORPUS_DIR")
+    if override:
+        return Path(override)
+
+    data_dir = Path(__file__).resolve().parents[1] / "data"
+    if data_dir.is_dir():
+        for child in data_dir.iterdir():
+            if child.is_dir() and child.name.lower() == "corpus":
+                return child
+
+    return data_dir / "corpus"
+
+
+CORPUS_DIR = _resolve_corpus_dir()
 SUPPORTED_CORPUS_SUFFIXES = {".md", ".markdown", ".txt"}
 
 logger = logging.getLogger("uvicorn.error")
