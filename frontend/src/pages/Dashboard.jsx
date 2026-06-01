@@ -97,7 +97,7 @@ export default function Dashboard() {
               Ready to plan your tournament?
             </div>
             <div className="small muted" style={{ marginTop: 4 }}>
-              Chat with the AI assistant to build your schedule, brochure, rule sheet, and more.
+              Chat with the AI assistant to build your schedule, rule sheet, and more.
             </div>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
@@ -43,6 +43,23 @@ export default function TournamentDetail() {
   const [registrantsData, setRegistrantsData] = useState(null)
   const [registrantsLoading, setRegistrantsLoading] = useState(false)
 
+  // Club operations sheet (fetched as editable text)
+  const [clubSheetLoading, setClubSheetLoading] = useState(false)
+  const clubSheetFetchedRef = useRef(null)
+
+  // Update one document on the saved reservation and persist it to localStorage.
+  function updateResDoc(key, value) {
+    setRes(prev => {
+      if (!prev) return prev
+      try {
+        const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
+        const updated = stored.map(r => String(r.id) === String(id) ? { ...r, [key]: value } : r)
+        localStorage.setItem('savedReservations', JSON.stringify(updated))
+      } catch { /* ignore storage errors */ }
+      return { ...prev, [key]: value }
+    })
+  }
+
   // Load from localStorage
   useEffect(() => {
     try {
@@ -54,6 +71,28 @@ export default function TournamentDetail() {
       setNotFound(true)
     }
   }, [id])
+
+  // Load the club operations sheet as editable text once the tournament is in
+  // the DB. If the organizer already edited it, keep their version; otherwise
+  // refresh from the live data so it reflects current registrations.
+  useEffect(() => {
+    const tid = res?.tournament_id
+    if (!tid || clubSheetFetchedRef.current === tid) return
+    clubSheetFetchedRef.current = tid
+    if (res.club_sheet?.edited) return
+    setClubSheetLoading(true)
+    ;(async () => {
+      try {
+        const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${tid}/club-sheet`, { headers: authHeaders() })
+        if (r.ok) {
+          const d = await r.json()
+          updateResDoc('club_sheet', { subject: d.subject, body: d.body, edited: false })
+        }
+      } catch { /* leave the card showing its placeholder */ }
+      finally { setClubSheetLoading(false) }
+    })()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.tournament_id])
 
   // Poll live schedule from DB
   useEffect(() => {
@@ -278,6 +317,8 @@ export default function TournamentDetail() {
     await doSend(`${import.meta.env.VITE_API_URL}/email/send-fnb-summary`, {
       recipients: recipientList,
       tournament_meta: res.tournament || {},
+      subject: res.fnb_summary?.subject || '',
+      body: res.fnb_summary?.body || '',
     })
   }
 
@@ -295,6 +336,8 @@ export default function TournamentDetail() {
           organizer_name: clubOrgName,
           organizer_email: clubOrgEmail,
           organizer_phone: clubOrgPhone,
+          subject: res.club_sheet?.subject || '',
+          body: res.club_sheet?.body || '',
         }),
       })
       const d = await r.json()
@@ -491,17 +534,6 @@ export default function TournamentDetail() {
         )}
       </div>
 
-      {/* ── Tournament Brochure ── */}
-      {res.brochure && (
-        <DocCard icon="mail" title="Tournament Brochure">
-          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
-            <strong>Subject:</strong> {res.brochure.subject}
-            {res.brochure.to && <div style={{ marginTop: 4 }}><strong>To:</strong> {res.brochure.to}</div>}
-          </div>
-          <DocPreview tone="neutral">{res.brochure.body}</DocPreview>
-        </DocCard>
-      )}
-
       {/* ── Player Information Guide ── */}
       {res.rule_sheet && (
         <DocCard
@@ -518,33 +550,32 @@ export default function TournamentDetail() {
         </DocCard>
       )}
 
-      {/* ── F&B Summary ── */}
+      {/* ── F&B Summary (expandable + editable) ── */}
       {res.fnb_summary && (
-        <DocCard
+        <EditableDocCard
           icon="food"
           title="Food & Beverage Summary"
+          tone="amber"
+          subject={res.fnb_summary.subject}
+          body={res.fnb_summary.body}
+          onSave={(subject, body) => updateResDoc('fnb_summary', { ...res.fnb_summary, subject, body })}
           action={<button onClick={() => openModal('fnb')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send to Caterer</button>}
-        >
-          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
-            <strong>Subject:</strong> {res.fnb_summary.subject}
-          </div>
-          <DocPreview tone="amber">
-            {res.fnb_summary.body?.slice(0, 800)}{res.fnb_summary.body?.length > 800 ? '\n…' : ''}
-          </DocPreview>
-        </DocCard>
+        />
       )}
 
-      {/* ── Club Operations Sheet ── */}
+      {/* ── Club Operations Sheet (expandable + editable) ── */}
       {res.tournament_id && (
-        <DocCard
+        <EditableDocCard
           icon="pin"
           title="Club Operations Sheet"
+          tone="amber"
+          loading={clubSheetLoading}
+          subject={res.club_sheet?.subject}
+          body={res.club_sheet?.body}
+          emptyMessage="Full operations document for golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact."
+          onSave={(subject, body) => updateResDoc('club_sheet', { subject, body, edited: true })}
           action={<button onClick={() => openModal('clubSheet')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send Club Sheet</button>}
-        >
-          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--muted)' }}>
-            Full operations document for golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact.
-          </div>
-        </DocCard>
+        />
       )}
 
       {/* Delete */}
@@ -631,7 +662,7 @@ export default function TournamentDetail() {
           title="Send Schedule"
           subtitle={t.name}
           tone="green"
-          note="Sends the full tee-time brochure with all player assignments."
+          note="Sends the full tee-time schedule with all player assignments."
           emails={emails}
           onEmailsChange={setEmails}
           sending={sending}
@@ -796,6 +827,113 @@ function DocPreview({ tone = 'neutral', children }) {
       <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: c.color, lineHeight: 1.65 }}>
         {children}
       </pre>
+    </div>
+  )
+}
+
+// A document card whose content can be expanded to full length and edited in
+// place by the organizer. Edits are saved via onSave(subject, body).
+function EditableDocCard({ icon, title, tone = 'neutral', subject, body, action, onSave, loading, emptyMessage }) {
+  const [expanded, setExpanded] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draftSubject, setDraftSubject] = useState(subject || '')
+  const [draftBody, setDraftBody] = useState(body || '')
+
+  // Keep the drafts in sync with incoming content while not actively editing.
+  useEffect(() => {
+    if (!editing) {
+      setDraftSubject(subject || '')
+      setDraftBody(body || '')
+    }
+  }, [subject, body, editing])
+
+  const c = previewTones[tone] || previewTones.neutral
+  const hasBody = !!(body && body.trim())
+
+  function startEdit() {
+    setDraftSubject(subject || '')
+    setDraftBody(body || '')
+    setEditing(true)
+    setExpanded(true)
+  }
+  function cancelEdit() {
+    setEditing(false)
+    setDraftSubject(subject || '')
+    setDraftBody(body || '')
+  }
+  function save() {
+    onSave(draftSubject, draftBody)
+    setEditing(false)
+  }
+
+  return (
+    <div className="card card-flush" style={{ marginBottom: 20 }}>
+      <div className="card-head">
+        <span className="card-title">
+          <Icon name={icon} size={18} style={{ color: 'var(--fairway)' }} /> {title}
+        </span>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          {!editing && hasBody && (
+            <button onClick={() => setExpanded(e => !e)} className="btn btn-ghost btn-sm">
+              {expanded ? 'Collapse' : 'Expand'}
+            </button>
+          )}
+          {!editing && (
+            <button onClick={startEdit} className="btn btn-ghost btn-sm" disabled={loading}>
+              <Icon name="doc" size={15} /> Edit
+            </button>
+          )}
+          {action}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="muted" style={{ padding: '14px 22px', fontSize: 13 }}>Loading…</div>
+      ) : editing ? (
+        <div style={{ padding: '14px 22px' }}>
+          <div className="field" style={{ marginBottom: 10 }}>
+            <label className="field-label">Subject</label>
+            <input type="text" value={draftSubject} onChange={e => setDraftSubject(e.target.value)} />
+          </div>
+          <div className="field" style={{ marginBottom: 12 }}>
+            <label className="field-label">Content</label>
+            <textarea
+              value={draftBody}
+              onChange={e => setDraftBody(e.target.value)}
+              rows={16}
+              style={{ resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12.5, lineHeight: 1.6 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={save} className="btn btn-primary btn-sm"><Icon name="check" size={15} /> Save</button>
+            <button onClick={cancelEdit} className="btn btn-ghost btn-sm">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {subject && (
+            <div style={{ padding: '14px 22px 0', fontSize: 13, color: 'var(--slate)' }}>
+              <strong>Subject:</strong> {subject}
+            </div>
+          )}
+          {hasBody ? (
+            <div style={{ margin: '12px 22px 18px', background: c.background, border: `1px solid ${c.border}`, borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>
+              <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: c.color, lineHeight: 1.65, maxHeight: expanded ? 'none' : 220, overflow: 'hidden' }}>
+                {body}
+              </pre>
+              {!expanded && body.length > 500 && (
+                <button onClick={() => setExpanded(true)} className="btn btn-ghost btn-sm" style={{ marginTop: 10 }}>
+                  Show full document
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="muted" style={{ padding: '14px 22px 18px', fontSize: 13 }}>
+              {emptyMessage || 'No content yet.'}
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }

@@ -378,6 +378,114 @@ def generate_invite_email(
     }
 
 
+def wrap_plain_text_html(title: str, body: str) -> str:
+    """Wrap an organizer-edited plain-text document in a simple, readable HTML email."""
+    import html as _html
+
+    safe_title = _html.escape(title or "")
+    safe_body = _html.escape(body or "")
+    return f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{safe_title}</title></head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif">
+  <div style="max-width:680px;margin:32px auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10)">
+    <div style="background:#166534;padding:24px 32px;color:#fff">
+      <h1 style="margin:0;font-size:20px;font-weight:700">{safe_title}</h1>
+    </div>
+    <div style="padding:24px 32px;white-space:pre-wrap;line-height:1.6;font-size:14px;color:#374151">{safe_body}</div>
+  </div>
+</body></html>"""
+
+
+def generate_club_ops_text(
+    doc: Dict[str, Any],
+    registrations: List[Dict[str, Any]],
+    players_registered: int,
+    organizer_name: str = "",
+    organizer_email: str = "",
+    organizer_phone: str = "",
+) -> Dict[str, str]:
+    """
+    Plain-text version of the club operations sheet, so the organizer can review
+    and edit the content before it's emailed. Mirrors the sections in
+    generate_club_ops_html.
+    """
+    import math
+
+    name = doc.get("name", "Golf Tournament")
+    date = doc.get("date", "TBD")
+    venue = doc.get("venue", "TBD")
+    fmt = doc.get("format", "TBD")
+    n_days = int(doc.get("number_of_days") or 1)
+    player_count = int(doc.get("player_count", 0))
+    event_type = doc.get("event_type", "individual")
+    team_size = int(doc.get("team_size") or 1)
+    tee_start = doc.get("tee_time_start", "08:00")
+    interval = int(doc.get("tee_time_interval", 12))
+    catering = doc.get("catering", "")
+    reg_deadline = doc.get("registration_deadline", "")
+    schedule = doc.get("schedule", [])
+
+    rental_total = sum(1 for r in registrations if r.get("rental_clubs"))
+    rental_right = sum(1 for r in registrations if r.get("rental_clubs") and r.get("club_hand") == "right")
+    rental_left = sum(1 for r in registrations if r.get("rental_clubs") and r.get("club_hand") == "left")
+    cart_count = math.ceil(players_registered / 2) if players_registered > 0 else math.ceil(player_count / 2)
+    n_groups = len(schedule)
+
+    lines: List[str] = [
+        f"GOLF CLUB OPERATIONS SHEET — {name} ({date})",
+        "Confidential — for club staff use only.",
+        "",
+        "EVENT OVERVIEW",
+        f"  Tournament: {name}",
+        f"  Date: {date}" + (f" ({n_days} days)" if n_days > 1 else ""),
+        f"  Venue: {venue}",
+        f"  Format: {fmt}",
+        "  Event Type: " + (f"Team — {team_size} players per team" if event_type == "team" else "Individual"),
+    ]
+    if reg_deadline:
+        lines.append(f"  Registration Deadline: {reg_deadline}")
+    lines += [
+        "",
+        "HEADCOUNT",
+        f"  Total Slots: {player_count}",
+        f"  Registered: {players_registered}",
+        f"  Remaining: {max(0, player_count - players_registered)}",
+        "",
+        "TEE CONFIGURATION",
+        f"  First Tee Time: {tee_start}",
+        f"  Interval: {interval} minutes",
+        f"  Total Groups: {n_groups}",
+        "",
+        "EQUIPMENT REQUIREMENTS",
+        f"  Estimated Carts: {cart_count}",
+        f"  Rental Clubs Needed: {rental_total}",
+    ]
+    if rental_total > 0:
+        lines.append(f"    Right-Handed: {rental_right}")
+        lines.append(f"    Left-Handed: {rental_left}")
+    if catering:
+        lines += ["", "CATERING", f"  {catering}"]
+    if schedule:
+        lines += ["", "CONFIRMED PAIRINGS"]
+        for g in schedule:
+            players = ", ".join(g.get("players", []))
+            lines.append(f"  Group {g.get('group')} — {g.get('teeTime')}: {players}")
+    if organizer_name or organizer_email or organizer_phone:
+        lines += ["", "ORGANIZER CONTACT"]
+        if organizer_name:
+            lines.append(f"  Name: {organizer_name}")
+        if organizer_email:
+            lines.append(f"  Email: {organizer_email}")
+        if organizer_phone:
+            lines.append(f"  Phone: {organizer_phone}")
+
+    return {
+        "subject": f"Operations Sheet — {name} ({date})",
+        "body": "\n".join(lines),
+    }
+
+
 def generate_club_ops_html(
     doc: Dict[str, Any],
     registrations: List[Dict[str, Any]],

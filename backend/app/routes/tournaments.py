@@ -23,6 +23,7 @@ from app.models import (
     SendBrochureResponse,
     SendClubSheetRequest,
     SendClubSheetResponse,
+    ClubSheetResponse,
     ShuffleResponse,
 )
 
@@ -117,6 +118,29 @@ async def get_registrations(tournament_id: str, db: DB, current_user: CurrentUse
     }
 
 
+@router.get("/{tournament_id}/club-sheet", response_model=ClubSheetResponse)
+async def get_club_sheet(tournament_id: str, db: DB, current_user: CurrentUser):
+    """
+    Return the club operations sheet as editable plain text (subject + body),
+    built from the live tournament data and registrations.
+    """
+    from app.services.document_generator import generate_club_ops_text
+
+    doc = await crud.get_tournament(db, tournament_id)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Tournament not found")
+
+    registrations = await crud.get_registrations(db, tournament_id)
+    players_registered = await crud.count_registrations(db, tournament_id)
+
+    sheet = generate_club_ops_text(
+        doc=doc,
+        registrations=registrations,
+        players_registered=players_registered,
+    )
+    return ClubSheetResponse(subject=sheet["subject"], body=sheet["body"])
+
+
 @router.post("/{tournament_id}/send-club-sheet", response_model=SendClubSheetResponse)
 async def send_club_sheet(
     tournament_id: str,
@@ -128,38 +152,46 @@ async def send_club_sheet(
     Build and email a full operations sheet to golf club staff.
     Includes: event overview, headcount, cart estimate, rental club breakdown,
     confirmed tee pairings, and organizer contact info.
+
+    When the organizer supplies an edited body, that text is emailed as-is
+    instead of regenerating the sheet from the live tournament data.
     """
-    from app.services.document_generator import generate_club_ops_html
+    from app.services.document_generator import generate_club_ops_html, wrap_plain_text_html
     from app.services.email_service import send_email_direct
 
     doc = await crud.get_tournament(db, tournament_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="Tournament not found")
 
-    registrations = await crud.get_registrations(db, tournament_id)
-    players_registered = await crud.count_registrations(db, tournament_id)
-
     name = doc.get("name", "Golf Tournament")
     date = doc.get("date", "TBD")
+    default_subject = f"Operations Sheet — {name} ({date})"
 
-    html_body = generate_club_ops_html(
-        doc=doc,
-        registrations=registrations,
-        players_registered=players_registered,
-        organizer_name=payload.organizer_name or "",
-        organizer_email=payload.organizer_email or "",
-        organizer_phone=payload.organizer_phone or "",
-    )
-
-    plain_text = (
-        f"Golf Club Operations Sheet — {name} ({date})\n\n"
-        f"Players Registered: {players_registered} / {doc.get('player_count', '?')}\n"
-        f"Please view the HTML version for full pairings and equipment breakdown."
-    )
+    if payload.body and payload.body.strip():
+        subject = payload.subject or default_subject
+        plain_text = payload.body
+        html_body = wrap_plain_text_html(subject, plain_text)
+    else:
+        registrations = await crud.get_registrations(db, tournament_id)
+        players_registered = await crud.count_registrations(db, tournament_id)
+        html_body = generate_club_ops_html(
+            doc=doc,
+            registrations=registrations,
+            players_registered=players_registered,
+            organizer_name=payload.organizer_name or "",
+            organizer_email=payload.organizer_email or "",
+            organizer_phone=payload.organizer_phone or "",
+        )
+        subject = default_subject
+        plain_text = (
+            f"Golf Club Operations Sheet — {name} ({date})\n\n"
+            f"Players Registered: {players_registered} / {doc.get('player_count', '?')}\n"
+            f"Please view the HTML version for full pairings and equipment breakdown."
+        )
 
     await send_email_direct(
         to_emails=payload.emails,
-        subject=f"Operations Sheet — {name} ({date})",
+        subject=subject,
         body=plain_text,
         html_body=html_body,
     )

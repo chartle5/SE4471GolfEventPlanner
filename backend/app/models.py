@@ -197,6 +197,10 @@ class SendClubSheetRequest(BaseModel):
     organizer_name: Optional[str] = ""
     organizer_email: Optional[str] = ""
     organizer_phone: Optional[str] = ""
+    # Optional organizer-edited content. When body is provided it is sent as-is
+    # instead of regenerating the sheet from the live tournament data.
+    subject: Optional[str] = ""
+    body: Optional[str] = ""
 
     @field_validator("emails")
     @classmethod
@@ -204,6 +208,11 @@ class SendClubSheetRequest(BaseModel):
         if not v:
             raise ValueError("At least one recipient email is required")
         return v
+
+
+class ClubSheetResponse(BaseModel):
+    subject: str
+    body: str
 
 
 class SendClubSheetResponse(BaseModel):
@@ -237,6 +246,10 @@ class SendRuleSheetResponse(BaseModel):
 class SendFnBSummaryRequest(BaseModel):
     recipients: List[str]
     tournament_meta: Dict[str, Any]
+    # Optional organizer-edited content. When body is provided it is sent as-is
+    # instead of regenerating the summary from the tournament data.
+    subject: Optional[str] = ""
+    body: Optional[str] = ""
 
     @field_validator("recipients")
     @classmethod

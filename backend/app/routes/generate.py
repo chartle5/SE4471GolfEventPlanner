@@ -9,7 +9,7 @@ from app.models import (
 from app.services.document_generator import (
     generate_schedule, generate_brochure,
     generate_invite_email, generate_brochure_html, generate_invite_html,
-    generate_rule_sheet, generate_fnb_summary,
+    generate_rule_sheet, generate_fnb_summary, wrap_plain_text_html,
 )
 from app.services.email_service import send_email_direct
 
@@ -126,14 +126,22 @@ async def send_fnb_summary_endpoint(payload: SendFnBSummaryRequest) -> SendFnBSu
             detail="Catering is not enabled for this tournament.",
         )
     try:
-        doc = generate_fnb_summary(payload.tournament_meta)
-        if doc is None:
-            raise HTTPException(status_code=400, detail="Catering is not enabled for this tournament.")
+        # Honor an organizer-edited summary when one is supplied; otherwise
+        # regenerate the default summary from the tournament data.
+        if payload.body and payload.body.strip():
+            subject = payload.subject or "Food & Beverage Summary"
+            body = payload.body
+            html_body = wrap_plain_text_html(subject, body)
+        else:
+            doc = generate_fnb_summary(payload.tournament_meta)
+            if doc is None:
+                raise HTTPException(status_code=400, detail="Catering is not enabled for this tournament.")
+            subject, body, html_body = doc["subject"], doc["body"], doc["html"]
         await send_email_direct(
             to_emails=payload.recipients,
-            subject=doc["subject"],
-            body=doc["body"],
-            html_body=doc["html"],
+            subject=subject,
+            body=body,
+            html_body=html_body,
         )
         count = len(payload.recipients)
         return SendFnBSummaryResponse(
