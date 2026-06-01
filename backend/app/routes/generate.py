@@ -98,12 +98,19 @@ async def send_rule_sheet_endpoint(payload: SendRuleSheetRequest) -> SendRuleShe
     Generate and email the Player Information Guide / Rule Sheet.
     """
     try:
-        doc = generate_rule_sheet(payload.tournament_meta)
+        # Honor an organizer-edited guide when supplied; otherwise regenerate.
+        if payload.body and payload.body.strip():
+            subject = payload.subject or "Player Information Guide"
+            body = payload.body
+            html_body = wrap_plain_text_html(subject, body)
+        else:
+            doc = generate_rule_sheet(payload.tournament_meta)
+            subject, body, html_body = doc["subject"], doc["body"], doc["html"]
         await send_email_direct(
             to_emails=payload.recipients,
-            subject=doc["subject"],
-            body=doc["body"],
-            html_body=doc["html"],
+            subject=subject,
+            body=body,
+            html_body=html_body,
         )
         count = len(payload.recipients)
         return SendRuleSheetResponse(

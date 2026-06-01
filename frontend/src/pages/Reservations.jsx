@@ -1,21 +1,39 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
 import ConfirmDialog from '../components/ConfirmDialog'
 
 export default function Reservations() {
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const uid = user?.user_id || ''
   const [reservations, setReservations] = useState([])
   const [pendingDelete, setPendingDelete] = useState(null)
 
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
-      setReservations([...stored].reverse())
+      // Claim any legacy (untagged) reservations on this device for the current
+      // user, then only show the ones this account owns — so accounts can't see
+      // each other's tournaments.
+      let mutated = false
+      const owned = []
+      for (const r of stored) {
+        if (!r.owner_id) {
+          r.owner_id = uid
+          mutated = true
+        }
+        if (r.owner_id === uid) owned.push(r)
+      }
+      if (mutated) {
+        try { localStorage.setItem('savedReservations', JSON.stringify(stored)) } catch { /* ignore */ }
+      }
+      setReservations([...owned].reverse())
     } catch {
       setReservations([])
     }
-  }, [])
+  }, [uid])
 
   function confirmDelete() {
     const id = pendingDelete

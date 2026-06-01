@@ -146,7 +146,7 @@ function LiveStatusPanel({ tournament, readyForGeneration, generationDone, gener
 
 export default function PlanTournament() {
   const navigate = useNavigate()
-  const { authHeaders } = useAuth()
+  const { authHeaders, user } = useAuth()
   const messagesContainerRef = useRef(null)
   // Restore an in-progress plan if one was saved recently (see loadDraft / DRAFT_TTL_MS).
   const [draft] = useState(loadDraft)
@@ -256,6 +256,7 @@ export default function PlanTournament() {
 
     const entry = {
       id: resId,
+      owner_id: user?.user_id || '',
       savedAt: new Date().toISOString(),
       tournament_id,
       registration_token,

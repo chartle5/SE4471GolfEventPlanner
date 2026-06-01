@@ -21,7 +21,7 @@ export default function ScheduleDraft() {
   const [fnbEmails, setFnbEmails] = useState('')
   const [fnbSending, setFnbSending] = useState(false)
   const [fnbResult, setFnbResult] = useState(null)
-  const { authHeaders } = useAuth()
+  const { authHeaders, user } = useAuth()
 
   const loadFromStorage = useCallback(() => {
     try {
@@ -58,6 +58,7 @@ export default function ScheduleDraft() {
       const existing = JSON.parse(localStorage.getItem('savedReservations') || '[]')
       const entry = {
         id: Date.now(),
+        owner_id: user?.user_id || '',
         savedAt: new Date().toISOString(),
         tournament,
         schedule,

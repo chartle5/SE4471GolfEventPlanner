@@ -226,6 +226,10 @@ class SendClubSheetResponse(BaseModel):
 class SendRuleSheetRequest(BaseModel):
     recipients: List[str]
     tournament_meta: Dict[str, Any]
+    # Optional organizer-edited content. When body is provided it is sent as-is
+    # instead of regenerating the guide from the tournament data.
+    subject: Optional[str] = ""
+    body: Optional[str] = ""
 
     @field_validator("recipients")
     @classmethod

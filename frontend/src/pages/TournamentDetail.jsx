@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import Icon from '../components/Icon'
@@ -10,7 +10,7 @@ import ScheduleEditor from '../components/ScheduleEditor'
 export default function TournamentDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
-  const { authHeaders } = useAuth()
+  const { authHeaders, user } = useAuth()
 
   const [res, setRes] = useState(null)
   const [liveData, setLiveData] = useState(null)
@@ -43,9 +43,10 @@ export default function TournamentDetail() {
   const [registrantsData, setRegistrantsData] = useState(null)
   const [registrantsLoading, setRegistrantsLoading] = useState(false)
 
-  // Club operations sheet (fetched as editable text)
+  // Club operations sheet — refreshed live from registrations unless the
+  // organizer has edited it (then their saved version is used).
   const [clubSheetLoading, setClubSheetLoading] = useState(false)
-  const clubSheetFetchedRef = useRef(null)
+  const [liveClubSheet, setLiveClubSheet] = useState(null)
 
   // Update one document on the saved reservation and persist it to localStorage.
   function updateResDoc(key, value) {
@@ -60,53 +61,49 @@ export default function TournamentDetail() {
     })
   }
 
-  // Load from localStorage
+  // Load from localStorage. Only the owning account may open a tournament;
+  // legacy untagged entries are accessible (they get claimed on the list page).
   useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('savedReservations') || '[]')
       const found = stored.find(r => String(r.id) === String(id))
-      if (found) setRes(found)
+      const uid = user?.user_id || ''
+      if (found && (!found.owner_id || found.owner_id === uid)) setRes(found)
       else setNotFound(true)
     } catch {
       setNotFound(true)
     }
-  }, [id])
+  }, [id, user?.user_id])
 
-  // Load the club operations sheet as editable text once the tournament is in
-  // the DB. If the organizer already edited it, keep their version; otherwise
-  // refresh from the live data so it reflects current registrations.
+  // Poll the live schedule + club operations sheet from the DB. The club sheet's
+  // player list and headcount track registrations, so it refreshes on the same
+  // interval — unless the organizer has edited it, in which case their saved
+  // version is preserved.
   useEffect(() => {
     const tid = res?.tournament_id
-    if (!tid || clubSheetFetchedRef.current === tid) return
-    clubSheetFetchedRef.current = tid
-    if (res.club_sheet?.edited) return
-    setClubSheetLoading(true)
-    ;(async () => {
-      try {
-        const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${tid}/club-sheet`, { headers: authHeaders() })
-        if (r.ok) {
-          const d = await r.json()
-          updateResDoc('club_sheet', { subject: d.subject, body: d.body, edited: false })
-        }
-      } catch { /* leave the card showing its placeholder */ }
-      finally { setClubSheetLoading(false) }
-    })()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [res?.tournament_id])
+    if (!tid) return
+    const clubEdited = !!res.club_sheet?.edited
+    let cancelled = false
+    if (!clubEdited && !liveClubSheet) setClubSheetLoading(true)
 
-  // Poll live schedule from DB
-  useEffect(() => {
-    if (!res?.tournament_id) return
     async function fetchLive() {
       try {
-        const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${res.tournament_id}/schedule`)
-        if (r.ok) setLiveData(await r.json())
-      } catch {}
+        const r = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${tid}/schedule`)
+        if (r.ok && !cancelled) setLiveData(await r.json())
+      } catch { /* ignore */ }
+      if (!clubEdited) {
+        try {
+          const cr = await fetch(`${import.meta.env.VITE_API_URL}/tournaments/${tid}/club-sheet`, { headers: authHeaders() })
+          if (cr.ok && !cancelled) setLiveClubSheet(await cr.json())
+        } catch { /* keep last value */ }
+        finally { if (!cancelled) setClubSheetLoading(false) }
+      }
     }
     fetchLive()
     const timer = setInterval(fetchLive, 15000)
-    return () => clearInterval(timer)
-  }, [res?.tournament_id])
+    return () => { cancelled = true; clearInterval(timer) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res?.tournament_id, res?.club_sheet?.edited])
 
   // Load registrations so the schedule editor can bundle teammates together.
   async function loadTeamRegistrations() {
@@ -308,6 +305,8 @@ export default function TournamentDetail() {
     await doSend(`${import.meta.env.VITE_API_URL}/email/send-rule-sheet`, {
       recipients: recipientList,
       tournament_meta: res.tournament || {},
+      subject: res.rule_sheet?.subject || '',
+      body: res.rule_sheet?.body || '',
     })
   }
 
@@ -336,8 +335,8 @@ export default function TournamentDetail() {
           organizer_name: clubOrgName,
           organizer_email: clubOrgEmail,
           organizer_phone: clubOrgPhone,
-          subject: res.club_sheet?.subject || '',
-          body: res.club_sheet?.body || '',
+          subject: res.club_sheet?.edited ? (res.club_sheet.subject || '') : '',
+          body: res.club_sheet?.edited ? (res.club_sheet.body || '') : '',
         }),
       })
       const d = await r.json()
@@ -534,20 +533,17 @@ export default function TournamentDetail() {
         )}
       </div>
 
-      {/* ── Player Information Guide ── */}
+      {/* ── Player Information Guide (expandable + editable) ── */}
       {res.rule_sheet && (
-        <DocCard
+        <EditableDocCard
           icon="doc"
           title="Player Information Guide"
+          tone="teal"
+          subject={res.rule_sheet.subject}
+          body={res.rule_sheet.body}
+          onSave={(subject, body) => updateResDoc('rule_sheet', { ...res.rule_sheet, subject, body })}
           action={<button onClick={() => openModal('ruleSheet')} className="btn btn-sm" style={{ background: 'var(--info)' }}><Icon name="send" size={15} /> Send to Players</button>}
-        >
-          <div style={{ padding: '14px 22px', fontSize: 13, color: 'var(--slate)' }}>
-            <strong>Subject:</strong> {res.rule_sheet.subject}
-          </div>
-          <DocPreview tone="teal">
-            {res.rule_sheet.body?.slice(0, 800)}{res.rule_sheet.body?.length > 800 ? '\n…' : ''}
-          </DocPreview>
-        </DocCard>
+        />
       )}
 
       {/* ── F&B Summary (expandable + editable) ── */}
@@ -563,18 +559,31 @@ export default function TournamentDetail() {
         />
       )}
 
-      {/* ── Club Operations Sheet (expandable + editable) ── */}
+      {/* ── Club Operations Sheet (expandable + editable, live until edited) ── */}
       {res.tournament_id && (
         <EditableDocCard
           icon="pin"
           title="Club Operations Sheet"
           tone="amber"
-          loading={clubSheetLoading}
-          subject={res.club_sheet?.subject}
-          body={res.club_sheet?.body}
+          loading={clubSheetLoading && !res.club_sheet?.edited}
+          subject={(res.club_sheet?.edited ? res.club_sheet : liveClubSheet)?.subject}
+          body={(res.club_sheet?.edited ? res.club_sheet : liveClubSheet)?.body}
           emptyMessage="Full operations document for golf club staff — headcount, carts, rental clubs, confirmed tee pairings, and organizer contact."
           onSave={(subject, body) => updateResDoc('club_sheet', { subject, body, edited: true })}
-          action={<button onClick={() => openModal('clubSheet')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send Club Sheet</button>}
+          action={
+            <>
+              {res.club_sheet?.edited && (
+                <button
+                  onClick={() => updateResDoc('club_sheet', null)}
+                  className="btn btn-ghost btn-sm"
+                  title="Discard your edits and track the live registration data again"
+                >
+                  Use live data
+                </button>
+              )}
+              <button onClick={() => openModal('clubSheet')} className="btn btn-sm" style={{ background: 'var(--warn)' }}><Icon name="send" size={15} /> Send Club Sheet</button>
+            </>
+          }
         />
       )}
 
@@ -800,35 +809,10 @@ export default function TournamentDetail() {
 
 // ── Shared sub-components ──
 
-function DocCard({ icon, title, action, children }) {
-  return (
-    <div className="card card-flush" style={{ marginBottom: 20 }}>
-      <div className="card-head">
-        <span className="card-title">
-          <Icon name={icon} size={18} style={{ color: 'var(--fairway)' }} /> {title}
-        </span>
-        {action}
-      </div>
-      {children}
-    </div>
-  )
-}
-
 const previewTones = {
   neutral: { background: 'var(--paper)', border: 'var(--line)', color: 'var(--slate)' },
   teal:    { background: '#EAF7F4', border: '#BFE6DE', color: '#14534A' },
   amber:   { background: 'var(--warn-bg)', border: 'var(--warn-bd)', color: '#78350F' },
-}
-
-function DocPreview({ tone = 'neutral', children }) {
-  const c = previewTones[tone]
-  return (
-    <div style={{ margin: '0 22px 18px', background: c.background, border: `1px solid ${c.border}`, borderRadius: 'var(--r-sm)', padding: '14px 16px' }}>
-      <pre style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, whiteSpace: 'pre-wrap', margin: 0, color: c.color, lineHeight: 1.65 }}>
-        {children}
-      </pre>
-    </div>
-  )
 }
 
 // A document card whose content can be expanded to full length and edited in
