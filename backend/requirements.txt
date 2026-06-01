@@ -6,7 +6,7 @@ pydantic
 anthropic
 langchain
 langchain-anthropic
-fastembed
+sentence-transformers
 motor
 pymongo[srv]
 python-jose[cryptography]
